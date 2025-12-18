@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { TILE_SIZE } from './Config';
 
 export class ScoreUI {
-    private container: PIXI.Container;
+    public container: PIXI.Container;
     private bars: PIXI.Graphics[] = [];
     private values: number[] = [0, 0, 0, 0, 0];
     
@@ -16,7 +16,6 @@ export class ScoreUI {
         this.container = new PIXI.Container();
         this.container.x = 20; // Margines taki sam jak planszy
         this.container.y = yPosition;
-        app.stage.addChild(this.container);
 
         // Tworzymy 5 pasków
         colors.forEach((color, index) => {

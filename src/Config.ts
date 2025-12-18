@@ -1,8 +1,15 @@
 export const COLS = 7;
 export const ROWS = 9;
 export const BLOCK_TYPES = 5;
-export const TILE_SIZE = 60; // Mniejszy, żeby zmieścił się na ekranie PC
+export const TILE_SIZE = 60;
 export const GAP = 4;
+
+// Definicja wektora grawitacji
+export type GravityDir = 'DOWN' | 'UP' | 'LEFT' | 'RIGHT';
+
+// --- TUTAJ ZMIENIASZ KIERUNEK JEDNYM PARAMETREM ---
+export const CURRENT_GRAVITY: GravityDir = 'DOWN'; 
+// Spróbuj zmienić na 'UP', 'LEFT' lub 'RIGHT'!
 
 export enum CellState {
     IDLE = 0,
@@ -14,13 +21,15 @@ export enum CellState {
 
 export interface Cell {
     id: number;
-    typeId: number; // -1 to puste
+    typeId: number;
     state: CellState;
-    // Pozycje wizualne (float)
     x: number;
     y: number;
-    // Cel logiczny (int)
     targetX: number;
     targetY: number;
-    velocityY: number;
+    
+    // Zmieniamy velocityY na ogólne velocity (działa w obie strony)
+    velocity: number; 
+    
+    timer: number;
 }
