@@ -33,7 +33,7 @@ export class FloatingTextManager {
     private pool: FloatLabel[] = [];
     private container: PIXI.Container;
 
-    constructor(app: PIXI.Application) {
+    constructor() {
         this.container = new PIXI.Container();
         // Ważne: Teksty muszą być na samej górze, nad UI i planszą
         // Możemy to dodać później w main.ts do odpowiedniej warstwy, 

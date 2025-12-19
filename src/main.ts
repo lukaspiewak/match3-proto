@@ -36,7 +36,7 @@ async function init() {
     // --- SYSTEMY ---
     const soundManager = new SoundManager();
     const particles = new ParticleSystem(app);
-    const floatingText = new FloatingTextManager(app);
+    const floatingText = new FloatingTextManager();
     const logic = new BoardLogic();
     
     // Callback: Dźwięk błędu z logiki
@@ -50,7 +50,7 @@ async function init() {
 
     // 1. UI (Góra)
     const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF];
-    const scoreUI = new ScoreUI(app, colors, MARGIN);
+    const scoreUI = new ScoreUI(colors, MARGIN);
     // @ts-ignore (Dostęp do kontenera UI)
     gameContainer.addChild(scoreUI.container);
 

@@ -1,5 +1,4 @@
 import * as PIXI from 'pixi.js';
-import { TILE_SIZE } from './Config';
 
 export class ScoreUI {
     public container: PIXI.Container;
@@ -12,7 +11,7 @@ export class ScoreUI {
     private barHeight: number = 100;
     private spacing: number = 20;
 
-    constructor(app: PIXI.Application, colors: number[], yPosition: number) {
+    constructor(colors: number[], yPosition: number) {
         this.container = new PIXI.Container();
         this.container.x = 20; // Margines taki sam jak planszy
         this.container.y = yPosition;
