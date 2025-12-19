@@ -4,23 +4,26 @@ import { InputController } from './InputController';
 import { ParticleSystem } from './ParticleSystem';
 import { ScoreUI } from './ScoreUI';
 import { SoundManager } from './SoundManager';
-import { FloatingTextManager } from './FloatingText';
-import { COLS, ROWS, TILE_SIZE, GAP, CellState } from './Config';
+import { COLS, ROWS, TILE_SIZE, GAP, CellState, GAME_LIMIT_MODE, GAME_LIMIT_VALUE, GAME_SEED } from './Config';
+import { Random } from './Random';
 
 const app = new PIXI.Application();
 
 async function init() {
-    // --- KONFIGURACJA WYMIARÓW LOGICZNYCH ---
+// 1. INICJALIZACJA RNG
+    // Dzięki temu start gry zawsze będzie taki sam dla tego samego numeru
+    Random.setSeed(GAME_SEED);
+    console.log(`🎲 RNG Seed set to: ${GAME_SEED}`);
+
     const UI_HEIGHT = 150; 
-    const MARGIN = 40; 
+    const MARGIN = 10; 
+    
     const BOARD_WIDTH = COLS * TILE_SIZE;
     const BOARD_HEIGHT = ROWS * TILE_SIZE;
     
-    // Wymiary "sceny", którą będziemy skalować
     const GAME_LOGICAL_WIDTH = BOARD_WIDTH + (MARGIN * 2);
     const GAME_LOGICAL_HEIGHT = BOARD_HEIGHT + UI_HEIGHT + (MARGIN * 2);
 
-    // Inicjalizacja Pixi
     await app.init({ 
         resizeTo: window,
         backgroundColor: 0x1a1a1a,
@@ -29,32 +32,67 @@ async function init() {
     });
     document.body.appendChild(app.canvas);
 
-    // Główny kontener gry (skalowany)
+    window.addEventListener('beforeunload', (e) => {
+        e.preventDefault();
+        e.returnValue = ''; 
+    });
+
     const gameContainer = new PIXI.Container();
     app.stage.addChild(gameContainer);
 
     // --- SYSTEMY ---
     const soundManager = new SoundManager();
     const particles = new ParticleSystem(app);
-    const floatingText = new FloatingTextManager();
     const logic = new BoardLogic();
     
-    // Callback: Dźwięk błędu z logiki
     logic.onBadMove = () => {
         soundManager.playBadMove();
-        // Krótka wibracja przy błędzie
         if (navigator.vibrate) navigator.vibrate(50);
+    };
+    
+    // Callback Końca Gry
+    logic.onGameFinished = (reason) => {
+        // Tutaj w przyszłości dodasz wyświetlanie ekranu "Koniec Gry"
+        // Na razie przyciemniamy planszę
+        if (reason === 'LIMIT_REACHED') {
+            const overlay = new PIXI.Graphics();
+            overlay.rect(0, 0, GAME_LOGICAL_WIDTH, GAME_LOGICAL_HEIGHT);
+            overlay.fill({ color: 0x000000, alpha: 0.7 });
+            gameContainer.addChild(overlay);
+            
+            const text = new PIXI.Text({ text: 'GAME OVER', style: { fill: 0xFFFFFF, fontSize: 40, fontWeight: 'bold' }});
+            text.anchor.set(0.5);
+            text.x = GAME_LOGICAL_WIDTH / 2;
+            text.y = GAME_LOGICAL_HEIGHT / 2;
+            gameContainer.addChild(text);
+        }
     };
 
     // --- WARSTWY ---
 
-    // 1. UI (Góra)
+    // 1. UI (Paski)
     const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF];
-    const scoreUI = new ScoreUI(colors, MARGIN);
-    // @ts-ignore (Dostęp do kontenera UI)
+    const scoreUI = new ScoreUI(colors, MARGIN, 100); 
+    // @ts-ignore
     gameContainer.addChild(scoreUI.container);
 
-    // Pozycjonowanie planszy (Dół)
+    // --- NOWOŚĆ: UI STANU GRY (Tekst Ruchów/Czasu) ---
+    const statusText = new PIXI.Text({
+        text: '',
+        style: {
+            fontFamily: 'Arial',
+            fontSize: 24,
+            fontWeight: 'bold',
+            fill: 0xFFFFFF,
+            stroke: { color: 0x000000, width: 3 }
+        }
+    });
+    statusText.anchor.set(1, 0); // Prawy górny róg
+    statusText.x = GAME_LOGICAL_WIDTH - MARGIN;
+    statusText.y = MARGIN;
+    gameContainer.addChild(statusText);
+
+
     const boardLocalY = GAME_LOGICAL_HEIGHT - BOARD_HEIGHT - MARGIN;
     const boardLocalX = MARGIN;
 
@@ -64,18 +102,27 @@ async function init() {
     bgContainer.y = boardLocalY;
     gameContainer.addChild(bgContainer);
 
+    const boardBg = new PIXI.Graphics();
+    const totalW = COLS * TILE_SIZE;
+    const totalH = ROWS * TILE_SIZE;
+    boardBg.rect(-GAP, -GAP, totalW + GAP, totalH + GAP);
+    boardBg.fill({ color: 0x000000, alpha: 0.5 });
+    boardBg.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 });
+    bgContainer.addChild(boardBg);
+
     for(let i=0; i<COLS * ROWS; i++) {
         const col = i % COLS;
         const row = Math.floor(i / COLS);
         const slot = new PIXI.Graphics();
         slot.rect(0, 0, TILE_SIZE - GAP, TILE_SIZE - GAP);
-        slot.fill({ color: 0x000000, alpha: 0.3 }); 
+        slot.fill({ color: 0x000000, alpha: 0.6 }); 
+        slot.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.05 });
         slot.x = col * TILE_SIZE;
         slot.y = row * TILE_SIZE;
         bgContainer.addChild(slot);
     }
 
-    // 3. KLOCKI (Z Maską)
+    // 3. KLOCKI
     const boardContainer = new PIXI.Container();
     boardContainer.x = boardLocalX;
     boardContainer.y = boardLocalY;
@@ -87,11 +134,7 @@ async function init() {
     boardContainer.addChild(mask);
     boardContainer.mask = mask;
 
-    // 4. Input Controller (Musi znać boardContainer i soundManager)
     const input = new InputController(logic, app, boardContainer, soundManager);
-
-    // 5. Floating Text (Na wierzchu, wewnątrz gameContainer)
-    gameContainer.addChild(floatingText.getContainer());
 
     // --- GENEROWANIE SPRITE'ÓW ---
     const sprites: PIXI.Graphics[] = [];
@@ -111,18 +154,28 @@ async function init() {
     let baseContainerX = 0;
     let baseContainerY = 0;
 
-    // --- RESIZE HANDLER ---
+    // --- SYSTEM HINT & DEADLOCK ---
+    let idleTime = 0;           
+    let hintIndices: number[] = []; 
+    let hintPulseTimer = 0;     
+
+    app.stage.eventMode = 'static';
+    app.stage.on('pointerdown', () => {
+        idleTime = 0;
+        hintIndices = []; 
+    });
+
     const resize = () => {
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
         const scaleX = screenWidth / GAME_LOGICAL_WIDTH;
         const scaleY = screenHeight / GAME_LOGICAL_HEIGHT;
-        const scale = Math.min(scaleX, scaleY) * 0.95; 
+        const scale = Math.min(scaleX, scaleY); 
 
         gameContainer.scale.set(scale);
-        
         baseContainerX = (screenWidth - GAME_LOGICAL_WIDTH * scale) / 2;
-        baseContainerY = (screenHeight - GAME_LOGICAL_HEIGHT * scale) / 2;
+        baseContainerY = screenHeight - (GAME_LOGICAL_HEIGHT * scale);
+        if (baseContainerY < 0) baseContainerY = 0;
         
         gameContainer.x = baseContainerX;
         gameContainer.y = baseContainerY;
@@ -133,18 +186,74 @@ async function init() {
 
     // --- GAME LOOP ---
     app.ticker.add((ticker) => {
-        // Aktualizacja podsystemów
-        logic.update(ticker.deltaTime);
-        particles.update(ticker.deltaTime);
-        floatingText.update(ticker.deltaTime); 
+        const delta = ticker.deltaTime;
+        logic.update(delta);
+        particles.update(delta);
+        scoreUI.update(delta);
 
-        // Obsługa Screen Shake
+        // --- AKTUALIZACJA UI STANU ---
+        if (GAME_LIMIT_MODE === 'MOVES') {
+            statusText.text = `Moves: ${logic.movesUsed} / ${GAME_LIMIT_VALUE}`;
+            // Zmień kolor na czerwony gdy blisko końca
+            if (logic.movesUsed >= GAME_LIMIT_VALUE - 3) statusText.style.fill = 0xFF0000;
+            else statusText.style.fill = 0xFFFFFF;
+        } else if (GAME_LIMIT_MODE === 'TIME') {
+            // Formatowanie czasu MM:SS
+            const timeLeft = Math.max(0, GAME_LIMIT_VALUE - logic.timeElapsed);
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = Math.floor(timeLeft % 60);
+            const secStr = seconds < 10 ? `0${seconds}` : `${seconds}`;
+            statusText.text = `Time: ${minutes}:${secStr}`;
+             if (timeLeft <= 10) statusText.style.fill = 0xFF0000;
+             else statusText.style.fill = 0xFFFFFF;
+        } else {
+            // Tryb bez limitu
+            statusText.text = `Moves: ${logic.movesUsed}`;
+        }
+
+
+        // --- OBSŁUGA HINTA I DEADLOCKA ---
+        if (logic.cells.every(c => c.state === CellState.IDLE) && logic.gameState === 'PLAYING') {
+            idleTime += delta / 60.0; // Sekundy
+            
+            if (idleTime > 10.0 && hintIndices.length === 0) {
+                const hint = logic.findHint();
+                if (hint) {
+                    hintIndices = hint;
+                } else {
+                    const fix = logic.findDeadlockFix();
+                    if (fix) {
+                        logic.cells[fix.id].typeId = fix.targetType;
+                        
+                        const cell = logic.cells[fix.id];
+                        const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+                        const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+                        const globalPos = boardContainer.toGlobal({x: drawX, y: drawY});
+                        particles.spawn(globalPos.x, globalPos.y, colors[fix.targetType]);
+                        soundManager.playPop(); 
+                        idleTime = 0; 
+                    } else {
+                        idleTime = 0; 
+                    }
+                }
+            }
+        } else {
+            idleTime = 0;
+            hintIndices = [];
+        }
+
+        if (hintIndices.length > 0) {
+            hintPulseTimer += delta * 0.1;
+        } else {
+            hintPulseTimer = 0;
+        }
+
         if (shakeIntensity > 0) {
             const offsetX = (Math.random() - 0.5) * shakeIntensity * 10;
             const offsetY = (Math.random() - 0.5) * shakeIntensity * 10;
             gameContainer.x = baseContainerX + offsetX;
             gameContainer.y = baseContainerY + offsetY;
-            shakeIntensity -= 0.05 * ticker.deltaTime;
+            shakeIntensity -= 0.05 * delta;
         } else {
             gameContainer.x = baseContainerX;
             gameContainer.y = baseContainerY;
@@ -153,10 +262,9 @@ async function init() {
         const selectedId = input.getSelectedId();
         const targetId = input.getTargetId();
 
-        // Pętla renderowania klocków
         for(let i=0; i<logic.cells.length; i++) {
             const cell = logic.cells[i];
-            const sprite = sprites[i];
+            const sprite = sprites[i] as any; 
 
             const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
             const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
@@ -166,30 +274,16 @@ async function init() {
                 continue;
             }
 
-            // --- MOMENT WYBUCHU ---
             if (cell.state === CellState.EXPLODING) {
-                if (sprite.alpha === 1.0 && sprite.visible === true) {
-                    // 1. Particle (Globalne współrzędne - bo są na app.stage)
+                if (!sprite.processed) {
                     const globalPos = boardContainer.toGlobal({x: drawX, y: drawY});
                     particles.spawn(globalPos.x, globalPos.y, colors[cell.typeId]);
-                    
-                    // 2. Floating Text (Lokalne współrzędne - bo jest w gameContainer)
-                    // boardContainer.x/y to pozycja planszy wewnątrz gameContainer
-                    // drawX/drawY to pozycja klocka wewnątrz planszy
-                    const localX = boardContainer.x + drawX;
-                    const localY = boardContainer.y + drawY;
-                    floatingText.spawn(localX, localY, 1, colors[cell.typeId]);
-
-                    // 3. Reszta efektów
                     scoreUI.addScore(cell.typeId);
                     soundManager.playPop();
-
                     if (navigator.vibrate) navigator.vibrate(40);
-                    
                     shakeIntensity = 0.8; 
+                    sprite.processed = true;
                 }
-
-                // Animacja znikania (Implozja)
                 sprite.visible = true;
                 sprite.x = drawX;
                 sprite.y = drawY;
@@ -198,9 +292,10 @@ async function init() {
                 sprite.tint = 0xFFFFFF; 
                 sprite.alpha = progress; 
                 continue;
+            } else {
+                sprite.processed = false;
             }
 
-            // --- STANDARDOWE RYSOWANIE ---
             let scale = 1.0;
             let zIndex = 0;
             let alpha = 1.0;
@@ -209,11 +304,15 @@ async function init() {
                 zIndex = 10;
             }
             else if (cell.id === selectedId) {
-                scale = 1.15; // Selected pop
+                scale = 1.15;
                 zIndex = 20;
             }
             else if (cell.id === targetId) {
-                scale = 0.85; // Target squeeze
+                scale = 0.85;
+            }
+
+            if (hintIndices.includes(cell.id)) {
+                alpha = 0.75 + Math.sin(hintPulseTimer) * 0.25;
             }
 
             sprite.visible = true;

@@ -4,12 +4,21 @@ export const BLOCK_TYPES = 5;
 export const TILE_SIZE = 60;
 export const GAP = 4;
 
-// Definicja wektora grawitacji
-export type GravityDir = 'DOWN' | 'UP' | 'LEFT' | 'RIGHT';
+// --- KONFIGURACJA RNG (ZIARNO) ---
+export const GAME_SEED = 123456; // Zmień to, aby zmienić układ gry
 
-// --- TUTAJ ZMIENIASZ KIERUNEK JEDNYM PARAMETREM ---
+// --- KONFIGURACJA TRYBU COMBO ---
+export type ComboMode = 'TIME' | 'MOVE';
+export const CURRENT_COMBO_MODE: ComboMode = 'TIME'; 
+export const COMBO_BONUS_SECONDS = 1.0; 
+
+// --- KONFIGURACJA ZASAD GRY ---
+export type LimitMode = 'NONE' | 'MOVES' | 'TIME';
+export const GAME_LIMIT_MODE: LimitMode = 'NONE'; 
+export const GAME_LIMIT_VALUE = 20; 
+
+export type GravityDir = 'DOWN' | 'UP' | 'LEFT' | 'RIGHT';
 export const CURRENT_GRAVITY: GravityDir = 'DOWN'; 
-// Spróbuj zmienić na 'UP', 'LEFT' lub 'RIGHT'!
 
 export enum CellState {
     IDLE = 0,
@@ -27,9 +36,6 @@ export interface Cell {
     y: number;
     targetX: number;
     targetY: number;
-    
-    // Zmieniamy velocityY na ogólne velocity (działa w obie strony)
     velocity: number; 
-    
     timer: number;
 }
