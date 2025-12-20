@@ -10,24 +10,26 @@ export class ScoreUI {
     private values: number[] = [0, 0, 0, 0, 0];
     private maxScore: number;
     
-    // Mniejsze wymiary
-    private barWidth: number = 16;  
-    private barHeight: number = 70; 
-    private spacing: number = 12;   
+    // --- JESZCZE MNIEJSZE WYMIARY ---
+    private barWidth: number = 12;   // Wąskie paski
+    private barHeight: number = 50;  // Niskie paski
+    private spacing: number = 8;     // Ciasne odstępy
 
     constructor(colors: number[], yPosition: number, maxScore: number = 100) {
         this.maxScore = maxScore;
         this.container = new PIXI.Container();
         this.container.y = yPosition;
 
-        // Tło panelu
+        // Tło panelu - OSTRE KRAWĘDZIE (rect)
         const totalWidth = (colors.length * this.barWidth) + ((colors.length - 1) * this.spacing);
-        const padding = 10;
+        const paddingX = 8;
+        const paddingY = 8;
         
         const bgPanel = new PIXI.Graphics();
-        bgPanel.roundRect(-padding, -padding, totalWidth + (padding * 2), this.barHeight + 25, 10);
-        bgPanel.fill({ color: 0x000000, alpha: 0.5 });
-        bgPanel.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 });
+        // ZMIANA: rect zamiast roundRect (ostre krawędzie)
+        bgPanel.rect(-paddingX, -paddingY, totalWidth + (paddingX * 2), this.barHeight + 20);
+        bgPanel.fill({ color: 0x000000, alpha: 0.6 });
+        bgPanel.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.3 });
         this.container.addChild(bgPanel);
 
         colors.forEach((color, index) => {
@@ -35,15 +37,14 @@ export class ScoreUI {
             barContainer.x = index * (this.barWidth + this.spacing);
             this.container.addChild(barContainer);
 
-            // 1. Tło paska (Jaśniejsze, żeby było widać puste)
+            // 1. Tło paska
             const bg = new PIXI.Graphics();
             bg.rect(0, 0, this.barWidth, this.barHeight);
-            // Ciemnoszary zamiast czarnego
             bg.fill({ color: 0x333333, alpha: 1.0 }); 
-            bg.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.2 });
+            // Usunięto obwódkę paska dla czystszego wyglądu przy małych rozmiarach
             barContainer.addChild(bg);
 
-            // 2. Wypełnienie (kolorowe)
+            // 2. Wypełnienie
             const fill = new PIXI.Graphics();
             fill.rect(0, 0, this.barWidth, this.barHeight);
             fill.fill(color);
@@ -64,10 +65,16 @@ export class ScoreUI {
             barContainer.addChild(flash);
             this.flashes.push(flash);
 
-            // 4. Licznik
+            // 4. Licznik (bardzo mały)
             const label = new PIXI.Text({
                 text: '0',
-                style: { fontFamily: 'Arial', fontSize: 12, fontWeight: 'bold', fill: 0xFFFFFF, align: 'center' }
+                style: {
+                    fontFamily: 'Arial',
+                    fontSize: 10, // Micro font
+                    fontWeight: 'bold',
+                    fill: 0xFFFFFF,
+                    align: 'center'
+                }
             });
             label.anchor.set(0.5, 0); 
             label.x = this.barWidth / 2;
@@ -76,8 +83,10 @@ export class ScoreUI {
             this.labels.push(label);
         });
         
-        // Pivot na środek (do łatwego centrowania w main.ts)
-        this.container.pivot.x = totalWidth / 2;
+        // Pivot ustawiamy na lewą górną krawędź panelu (plus padding), 
+        // żeby łatwo pozycjonować go od lewej krawędzi ekranu
+        this.container.pivot.x = -paddingX;
+        this.container.pivot.y = -paddingY;
     }
 
     public addScore(colorId: number) {
@@ -99,13 +108,6 @@ export class ScoreUI {
                 if (flash.alpha < 0) flash.alpha = 0;
             }
         }
-    }
-
-    public getBarPosition(colorId: number): { x: number, y: number } {
-        // Uwzględniamy pivot
-        const x = this.container.x - this.container.pivot.x + (colorId * (this.barWidth + this.spacing)) + (this.barWidth / 2);
-        const y = this.container.y + (this.barHeight / 2);
-        return { x, y };
     }
 
     public reset(newMaxScore: number) {
