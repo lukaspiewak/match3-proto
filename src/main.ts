@@ -101,6 +101,18 @@ async function init() {
     boardContainer.addChild(mask);
     boardContainer.mask = mask;
 
+    // --- ZMIENNE DO SYSTEMU HINT ---
+    let idleTime = 0;
+    let hintIndices: number[] = [];
+    let hintPulseTimer = 0;
+
+    // Resetowanie licznika przy jakiejkolwiek interakcji
+    app.stage.eventMode = 'static';
+    app.stage.on('pointerdown', () => {
+        idleTime = 0;
+        hintIndices = []; 
+    });
+
     // --- CALLBACKI MANAGERA ---
     gameManager.onDeadlockFixed = (id, type) => {
         // Efekt wizualny naprawy planszy (niezależnie czy gracz czy bot)
@@ -111,6 +123,10 @@ async function init() {
         
         particles.spawn(globalPos.x, globalPos.y, colors[type]);
         soundManager.playPop();
+        
+        // Resetujemy idleTime po naprawie
+        idleTime = 0;
+        hintIndices = [];
     };
 
     gameManager.onGameFinished = (reason) => {
@@ -170,6 +186,43 @@ async function init() {
         particles.update(delta);
         scoreUI.update(delta);
         
+        // --- OBSŁUGA HINTA I DEADLOCKA ---
+        // Sprawdzamy czy gra trwa (!isGameOver) i czy plansza jest w spoczynku
+        if (logic.cells.every(c => c.state === CellState.IDLE) && !gameManager.isGameOver) {
+            idleTime += delta / 60.0; // Sekundy
+            
+            // Po 10 sekundach szukamy podpowiedzi
+            if (idleTime > 10.0 && hintIndices.length === 0) {
+                const hint = logic.findHint();
+                if (hint) {
+                    hintIndices = hint;
+                } else {
+                    // Sytuacja: Czas minął, a ruchu nie ma -> Deadlock
+                    // GameManager ma własną obsługę na starcie tury, ale to jest fallback "w czasie rzeczywistym"
+                    // dla gracza, który myśli > 10s.
+                    const fix = logic.findDeadlockFix();
+                    if (fix) {
+                        // Aplikujemy fix wizualnie i logicznie
+                        logic.cells[fix.id].typeId = fix.targetType;
+                        gameManager.onDeadlockFixed?.(fix.id, fix.targetType);
+                    } else {
+                        idleTime = 0; // Reset, jeśli nawet fix się nie udał
+                    }
+                }
+            }
+        } else {
+            // Jeśli coś się dzieje na planszy, resetujemy licznik
+            idleTime = 0;
+            hintIndices = [];
+        }
+
+        // Animacja pulsowania dla klocków z hinta
+        if (hintIndices.length > 0) {
+            hintPulseTimer += delta * 0.1;
+        } else {
+            hintPulseTimer = 0;
+        }
+
         // UI: Status Tury
         statusText.text = gameManager.gameStatusText;
         if (gameManager.turnTimer < 5.0) statusText.style.fill = 0xFF0000;
@@ -216,6 +269,11 @@ async function init() {
             if (cell.state === CellState.SWAPPING) { zIndex = 10; }
             else if (cell.id === selectedId) { scale = 1.15; zIndex = 20; }
             
+            // --- APLIKACJA EFEKTU HINT ---
+            if (hintIndices.includes(cell.id)) {
+                alpha = 0.75 + Math.sin(hintPulseTimer) * 0.25;
+            }
+
             sprite.visible = true; sprite.alpha = alpha; sprite.tint = colors[cell.typeId];
             sprite.x = drawX; sprite.y = drawY; sprite.scale.set(scale); sprite.zIndex = zIndex;
         }
