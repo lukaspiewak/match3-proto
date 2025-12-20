@@ -3,7 +3,7 @@ import { BoardLogic } from './BoardLogic';
 import { GameManager } from './GameManager';
 import { TILE_SIZE, COLS } from './Config';
 import { SoundManager } from './SoundManager';
-// Abstrakcja Gracza
+
 export abstract class PlayerController {
     protected manager: GameManager;
     protected logic: BoardLogic;
@@ -19,14 +19,12 @@ export abstract class PlayerController {
     public abstract onTurnStart(): void;
 }
 
-// Implementacja: CZŁOWIEK (Myszka + Dotyk/Swipe)
 export class HumanPlayerController extends PlayerController {
     private selectedId: number = -1;
     private app: PIXI.Application;
     private boardContainer: PIXI.Container;
     private soundManager: SoundManager;
 
-    // Zmienne do obsługi Swipe/Drag
     private isDragging: boolean = false;
     private startX: number = 0;
     private startY: number = 0;
@@ -42,11 +40,9 @@ export class HumanPlayerController extends PlayerController {
 
     private setupInput() {
         this.boardContainer.eventMode = 'static';
-        // Nasłuchujemy pełnego cyklu zdarzeń dla obsługi Swipe
         this.boardContainer.on('pointerdown', (e) => this.onPointerDown(e));
         this.boardContainer.on('pointermove', (e) => this.onPointerMove(e));
         this.boardContainer.on('pointerup', (e) => this.onPointerUp(e));
-        // Resetowanie gestu przy wyjściu poza obszar
         this.boardContainer.on('pointerupoutside', () => this.cancelDrag());
     }
 
@@ -72,12 +68,9 @@ export class HumanPlayerController extends PlayerController {
             this.startY = e.global.y;
             this.startId = pos.id;
 
-            // Jeśli nic nie jest zaznaczone, zaznaczamy ten klocek wstępnie
-            // (ale jeśli zrobimy swipe, to zaznaczenie zniknie i wykona się ruch)
             if (this.selectedId === -1) {
                 this.selectedId = pos.id;
             } else {
-                // Jeśli kliknęliśmy w INNY klocek mając już zaznaczenie -> próba ruchu click-click
                 this.tryMoveTo(pos.id);
             }
         }
@@ -88,39 +81,28 @@ export class HumanPlayerController extends PlayerController {
 
         const deltaX = e.global.x - this.startX;
         const deltaY = e.global.y - this.startY;
-
-        // Próg przesunięcia (np. połowa klocka lub sztywna wartość w pikselach)
-        const THRESHOLD = TILE_SIZE * 0.5;
+        
+        const THRESHOLD = TILE_SIZE * 0.5; 
 
         if (Math.abs(deltaX) > THRESHOLD || Math.abs(deltaY) > THRESHOLD) {
-            // Wykryto SWIPE!
             let dirX = 0;
             let dirY = 0;
 
             if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                // Ruch poziomy
                 dirX = deltaX > 0 ? 1 : -1;
             } else {
-                // Ruch pionowy
                 dirY = deltaY > 0 ? 1 : -1;
             }
 
-            // Wykonujemy ruch
             this.manager.requestMove(this.id, this.startId, dirX, dirY);
-
-            // Po wykonaniu swipe resetujemy stan
             this.cancelDrag();
-            this.selectedId = -1; // Usuwamy zaznaczenie wizualne
+            this.selectedId = -1; 
         }
     }
 
     private onPointerUp(e: PIXI.FederatedPointerEvent) {
-        // Jeśli puściliśmy myszkę/palec, a nie było swipe'a, traktujemy to jako zwykłe kliknięcie
         if (this.isDragging) {
             const pos = this.getBoardPos(e);
-
-            // Jeśli puszczamy na tym samym klocku co start, to jest to "wybór" (Click)
-            // Jeśli puszczamy na innym, to może być próba Drag&Drop
             if (pos && pos.id !== this.startId) {
                 this.tryMoveTo(pos.id);
             }
@@ -133,16 +115,13 @@ export class HumanPlayerController extends PlayerController {
         this.startId = -1;
     }
 
-    // Pomocnicza funkcja do obsługi logiki "Click-Click" i "Drag-Drop"
     private tryMoveTo(targetId: number) {
-        // Sprawdzamy czy targetId jest sąsiadem selectedId
         if (this.selectedId === -1) return;
 
         const diff = Math.abs(targetId - this.selectedId);
         const isAdjacent = (diff === 1 && Math.floor(targetId / COLS) === Math.floor(this.selectedId / COLS)) || diff === COLS;
 
         if (isAdjacent) {
-            // Obliczamy kierunek
             let dirX = 0;
             let dirY = 0;
             if (targetId === this.selectedId + 1) dirX = 1;
@@ -151,36 +130,34 @@ export class HumanPlayerController extends PlayerController {
             else if (targetId === this.selectedId - COLS) dirY = -1;
 
             this.manager.requestMove(this.id, this.selectedId, dirX, dirY);
-            this.selectedId = -1; // Reset po ruchu
+            this.selectedId = -1; 
         } else {
-            // Kliknięcie w niesąsiadujący klocek = zmiana zaznaczenia
             this.selectedId = targetId;
         }
     }
 
-    public update(delta: number): void { }
+    public update(delta: number): void {}
 
     public onTurnStart(): void {
         this.selectedId = -1;
         this.cancelDrag();
     }
-
+    
     public getSelectedId(): number {
         if (!this.manager.isMyTurn(this.id)) return -1;
         return this.selectedId;
     }
 }
 
-// Implementacja: BOT
 export class BotPlayerController extends PlayerController {
     private thinkTimer: number = 0;
-    private readonly THINK_DELAY = 1.0;
+    private readonly THINK_DELAY = 1.0; 
 
     public update(delta: number): void {
         this.thinkTimer += delta / 60.0;
         if (this.thinkTimer >= this.THINK_DELAY) {
             this.makeMove();
-            this.thinkTimer = 0;
+            this.thinkTimer = 0; 
         }
     }
 

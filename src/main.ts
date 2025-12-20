@@ -5,8 +5,7 @@ import { ScoreUI } from './ScoreUI';
 import { SoundManager } from './SoundManager';
 import { 
     COLS, ROWS, TILE_SIZE, GAP, CellState, 
-    GAME_SEED, CURRENT_GAME_MODE, PLAYER_ID_1, PLAYER_ID_2,
-    GAME_LIMIT_MODE, GAME_LIMIT_VALUE 
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig 
 } from './Config';
 import { Random } from './Random';
 import { GameManager } from './GameManager';
@@ -14,8 +13,25 @@ import { HumanPlayerController, BotPlayerController } from './PlayerController';
 
 const app = new PIXI.Application();
 
+// --- STATE MANAGEMENT ---
+type AppState = 'MENU' | 'OPTIONS' | 'GAME';
+let currentState: AppState = 'MENU';
+
+// Kontenery ekranów
+let menuContainer: PIXI.Container;
+let optionsContainer: PIXI.Container;
+let gameSceneContainer: PIXI.Container; 
+
+// --- GAME LOGIC REFERENCJE ---
+let gameManager: GameManager;
+let logic: BoardLogic;
+let soundManager: SoundManager;
+let particles: ParticleSystem;
+let scoreUI: ScoreUI;
+let humanPlayer: HumanPlayerController;
+
 async function init() {
-    Random.setSeed(GAME_SEED);
+    Random.setSeed(AppConfig.seed);
     
     const UI_HEIGHT = 150; 
     const MARGIN = 10; 
@@ -33,25 +49,36 @@ async function init() {
     document.body.appendChild(app.canvas);
     window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
 
-    const gameContainer = new PIXI.Container();
-    app.stage.addChild(gameContainer);
+    // --- SETUP SCENE CONTAINERS ---
+    const rootContainer = new PIXI.Container();
+    app.stage.addChild(rootContainer);
 
-    const soundManager = new SoundManager();
-    const particles = new ParticleSystem(app);
+    menuContainer = new PIXI.Container();
+    optionsContainer = new PIXI.Container();
+    gameSceneContainer = new PIXI.Container();
+
+    rootContainer.addChild(menuContainer);
+    rootContainer.addChild(optionsContainer);
+    rootContainer.addChild(gameSceneContainer);
+
+    // Domyślnie pokaż Menu
+    switchState('MENU');
+
+    // --- GAME SCENE SETUP ---
+    soundManager = new SoundManager();
+    particles = new ParticleSystem(app); // Particles są globalne na stage
     
-    // LOGIC & MANAGER
-    const logic = new BoardLogic();
+    logic = new BoardLogic();
     logic.onBadMove = () => { soundManager.playBadMove(); if (navigator.vibrate) navigator.vibrate(50); };
 
-    const gameManager = new GameManager(logic);
+    gameManager = new GameManager(logic);
 
-    // WARSTWY
+    // --- BUDOWA UI GRY (gameSceneContainer) ---
     const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF];
-    const scoreUI = new ScoreUI(colors, MARGIN, 100); 
+    scoreUI = new ScoreUI(colors, MARGIN, 100); 
     // @ts-ignore
-    gameContainer.addChild(scoreUI.container);
+    gameSceneContainer.addChild(scoreUI.container);
 
-    // STATUS UI (Góra Prawa)
     const statusText = new PIXI.Text({
         text: 'Init...',
         style: { fontFamily: 'Arial', fontSize: 18, fontWeight: 'bold', fill: 0xFFFFFF, stroke: { color: 0x000000, width: 3 } }
@@ -59,9 +86,8 @@ async function init() {
     statusText.anchor.set(1, 0); 
     statusText.x = GAME_LOGICAL_WIDTH - MARGIN;
     statusText.y = MARGIN;
-    gameContainer.addChild(statusText);
+    gameSceneContainer.addChild(statusText);
 
-    // STATUS GRY UI (Góra Lewa - Limit gry)
     const limitText = new PIXI.Text({
         text: '',
         style: { fontFamily: 'Arial', fontSize: 18, fontWeight: 'bold', fill: 0xFFD700, stroke: { color: 0x000000, width: 3 } }
@@ -69,13 +95,22 @@ async function init() {
     limitText.anchor.set(0, 0);
     limitText.x = MARGIN;
     limitText.y = MARGIN;
-    gameContainer.addChild(limitText);
+    gameSceneContainer.addChild(limitText);
+
+    // Przycisk BACK TO MENU w grze
+    const backButton = createButton("MENU", 80, 40, 0x555555, () => {
+        gameManager.resetGame();
+        switchState('MENU');
+    });
+    backButton.x = GAME_LOGICAL_WIDTH / 2 - 40;
+    backButton.y = 10;
+    gameSceneContainer.addChild(backButton);
 
     const boardLocalY = GAME_LOGICAL_HEIGHT - BOARD_HEIGHT - MARGIN;
     const boardLocalX = MARGIN;
     const bgContainer = new PIXI.Container();
     bgContainer.x = boardLocalX; bgContainer.y = boardLocalY;
-    gameContainer.addChild(bgContainer);
+    gameSceneContainer.addChild(bgContainer);
 
     const boardBg = new PIXI.Graphics();
     boardBg.rect(-GAP, -GAP, (COLS * TILE_SIZE) + GAP, (ROWS * TILE_SIZE) + GAP);
@@ -93,7 +128,7 @@ async function init() {
 
     const boardContainer = new PIXI.Container();
     boardContainer.x = boardLocalX; boardContainer.y = boardLocalY;
-    gameContainer.addChild(boardContainer);
+    gameSceneContainer.addChild(boardContainer);
     
     const mask = new PIXI.Graphics();
     mask.rect(0, 0, COLS * TILE_SIZE, ROWS * TILE_SIZE);
@@ -101,21 +136,115 @@ async function init() {
     boardContainer.addChild(mask);
     boardContainer.mask = mask;
 
-    // --- ZMIENNE DO SYSTEMU HINT ---
-    let idleTime = 0;
-    let hintIndices: number[] = [];
-    let hintPulseTimer = 0;
-
-    // Resetowanie licznika przy jakiejkolwiek interakcji
-    app.stage.eventMode = 'static';
-    app.stage.on('pointerdown', () => {
-        idleTime = 0;
-        hintIndices = []; 
+    // --- BUDOWA MENU (menuContainer) ---
+    const titleText = new PIXI.Text({
+        text: 'MATCH-3 ENGINE',
+        style: { fontFamily: 'Arial', fontSize: 40, fontWeight: 'bold', fill: 0xFFFFFF, align: 'center' }
     });
+    titleText.anchor.set(0.5);
+    titleText.x = GAME_LOGICAL_WIDTH / 2;
+    titleText.y = 100;
+    menuContainer.addChild(titleText);
+
+    const btnPlaySolo = createButton("PLAY SOLO", 200, 60, 0x00AA00, () => {
+        AppConfig.gameMode = 'SOLO';
+        startGame();
+    });
+    btnPlaySolo.x = GAME_LOGICAL_WIDTH / 2 - 100;
+    btnPlaySolo.y = 200;
+    menuContainer.addChild(btnPlaySolo);
+
+    const btnVsAI = createButton("VS BOT", 200, 60, 0xAA0000, () => {
+        AppConfig.gameMode = 'VS_AI';
+        startGame();
+    });
+    btnVsAI.x = GAME_LOGICAL_WIDTH / 2 - 100;
+    btnVsAI.y = 280;
+    menuContainer.addChild(btnVsAI);
+
+    const btnOptions = createButton("OPTIONS", 200, 60, 0x0000AA, () => {
+        switchState('OPTIONS');
+        refreshOptionsUI();
+    });
+    btnOptions.x = GAME_LOGICAL_WIDTH / 2 - 100;
+    btnOptions.y = 360;
+    menuContainer.addChild(btnOptions);
+
+    // --- BUDOWA OPTIONS (optionsContainer) ---
+    const optionsTitle = new PIXI.Text({ text: 'OPTIONS', style: { fill: 0xFFFFFF, fontSize: 32 } });
+    optionsTitle.anchor.set(0.5);
+    optionsTitle.x = GAME_LOGICAL_WIDTH / 2; optionsTitle.y = 50;
+    optionsContainer.addChild(optionsTitle);
+
+    // Dynamiczne przyciski opcji
+    let optY = 120;
+    const createOptionToggle = (label: string, onClick: () => void) => {
+        const btn = createButton(label, 300, 50, 0x444444, onClick);
+        btn.x = GAME_LOGICAL_WIDTH / 2 - 150;
+        btn.y = optY;
+        optY += 70;
+        optionsContainer.addChild(btn);
+        return btn; // Zwracamy, by móc aktualizować tekst
+    };
+
+    const btnOptLimit = createOptionToggle("", () => {
+        if (AppConfig.limitMode === 'NONE') AppConfig.limitMode = 'MOVES';
+        else if (AppConfig.limitMode === 'MOVES') AppConfig.limitMode = 'TIME';
+        else AppConfig.limitMode = 'NONE';
+        refreshOptionsUI();
+    });
+
+    const btnOptVal = createOptionToggle("", () => {
+        if (AppConfig.limitValue === 20) AppConfig.limitValue = 40;
+        else if (AppConfig.limitValue === 40) AppConfig.limitValue = 60;
+        else AppConfig.limitValue = 20;
+        refreshOptionsUI();
+    });
+
+    const btnOptCombo = createOptionToggle("", () => {
+        AppConfig.comboMode = AppConfig.comboMode === 'TIME' ? 'MOVE' : 'TIME';
+        refreshOptionsUI();
+    });
+
+    const btnOptSeed = createOptionToggle("", () => {
+        AppConfig.seed = Math.floor(Math.random() * 100000);
+        refreshOptionsUI();
+    });
+
+    const btnOptBack = createButton("BACK", 100, 50, 0x555555, () => switchState('MENU'));
+    btnOptBack.x = GAME_LOGICAL_WIDTH / 2 - 50;
+    btnOptBack.y = GAME_LOGICAL_HEIGHT - 100;
+    optionsContainer.addChild(btnOptBack);
+
+    function refreshOptionsUI() {
+        // Aktualizacja tekstów na przyciskach
+        (btnOptLimit.children[1] as PIXI.Text).text = `LIMIT: ${AppConfig.limitMode}`;
+        (btnOptVal.children[1] as PIXI.Text).text = `VALUE: ${AppConfig.limitValue}`;
+        (btnOptCombo.children[1] as PIXI.Text).text = `COMBO: ${AppConfig.comboMode}`;
+        (btnOptSeed.children[1] as PIXI.Text).text = `SEED: ${AppConfig.seed}`;
+    }
+
+    // --- FUNKCJA STARTU GRY ---
+    function startGame() {
+        switchState('GAME');
+        Random.setSeed(AppConfig.seed);
+        scoreUI.reset(100); // Reset pasków
+        gameManager.clearPlayers();
+
+        // Tworzenie graczy
+        humanPlayer = new HumanPlayerController(PLAYER_ID_1, gameManager, logic, app, boardContainer, soundManager);
+        gameManager.registerPlayer(humanPlayer);
+
+        if (AppConfig.gameMode === 'VS_AI') {
+            const bot = new BotPlayerController(PLAYER_ID_2, gameManager, logic);
+            gameManager.registerPlayer(bot);
+        }
+
+        gameManager.startGame();
+    }
 
     // --- CALLBACKI MANAGERA ---
     gameManager.onDeadlockFixed = (id, type) => {
-        // Efekt wizualny naprawy planszy (niezależnie czy gracz czy bot)
         const cell = logic.cells[id];
         const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
         const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
@@ -124,7 +253,6 @@ async function init() {
         particles.spawn(globalPos.x, globalPos.y, colors[type]);
         soundManager.playPop();
         
-        // Resetujemy idleTime po naprawie
         idleTime = 0;
         hintIndices = [];
     };
@@ -133,26 +261,22 @@ async function init() {
         const overlay = new PIXI.Graphics();
         overlay.rect(0, 0, GAME_LOGICAL_WIDTH, GAME_LOGICAL_HEIGHT);
         overlay.fill({ color: 0x000000, alpha: 0.8 });
-        gameContainer.addChild(overlay);
+        gameSceneContainer.addChild(overlay);
         
-        const text = new PIXI.Text({ text: `GAME OVER\n${reason}`, style: { fill: 0xFFFFFF, fontSize: 32, align: 'center' }});
+        const text = new PIXI.Text({ text: `GAME OVER\n${reason}\nClick to Menu`, style: { fill: 0xFFFFFF, fontSize: 32, align: 'center' }});
         text.anchor.set(0.5);
         text.x = GAME_LOGICAL_WIDTH / 2; text.y = GAME_LOGICAL_HEIGHT / 2;
-        gameContainer.addChild(text);
+        gameSceneContainer.addChild(text);
+
+        text.eventMode = 'static';
+        text.on('pointerdown', () => {
+            gameSceneContainer.removeChild(overlay);
+            gameSceneContainer.removeChild(text);
+            switchState('MENU');
+        });
     };
 
-    // --- GRACZE ---
-    const human = new HumanPlayerController(PLAYER_ID_1, gameManager, logic, app, boardContainer, soundManager);
-    gameManager.registerPlayer(human);
-
-    if (CURRENT_GAME_MODE === 'VS_AI') {
-        const bot = new BotPlayerController(PLAYER_ID_2, gameManager, logic);
-        gameManager.registerPlayer(bot);
-    } 
-
-    gameManager.startGame();
-
-    // SPRITY
+    // --- SPRITY ---
     const sprites: PIXI.Graphics[] = [];
     for(let i=0; i<logic.cells.length; i++) {
         const g = new PIXI.Graphics();
@@ -169,122 +293,158 @@ async function init() {
 
     const resize = () => {
         const scale = Math.min(app.screen.width / GAME_LOGICAL_WIDTH, app.screen.height / GAME_LOGICAL_HEIGHT); 
-        gameContainer.scale.set(scale);
+        rootContainer.scale.set(scale);
         baseContainerX = (app.screen.width - GAME_LOGICAL_WIDTH * scale) / 2;
         baseContainerY = app.screen.height - (GAME_LOGICAL_HEIGHT * scale);
         if (baseContainerY < 0) baseContainerY = 0;
-        gameContainer.x = baseContainerX; gameContainer.y = baseContainerY;
+        rootContainer.x = baseContainerX; rootContainer.y = baseContainerY;
     };
     window.addEventListener('resize', resize); resize(); 
 
-    // GAME LOOP
+    // --- HINT VARS ---
+    let idleTime = 0;
+    let hintIndices: number[] = [];
+    let hintPulseTimer = 0;
+
+    app.stage.eventMode = 'static';
+    app.stage.on('pointerdown', () => {
+        idleTime = 0;
+        hintIndices = []; 
+    });
+
+    // --- GAME LOOP ---
     app.ticker.add((ticker) => {
         const delta = ticker.deltaTime;
-        
-        gameManager.update(delta);
-        logic.update(delta);
-        particles.update(delta);
-        scoreUI.update(delta);
-        
-        // --- OBSŁUGA HINTA I DEADLOCKA ---
-        // Sprawdzamy czy gra trwa (!isGameOver) i czy plansza jest w spoczynku
-        if (logic.cells.every(c => c.state === CellState.IDLE) && !gameManager.isGameOver) {
-            idleTime += delta / 60.0; // Sekundy
+
+        if (currentState === 'GAME') {
+            gameManager.update(delta);
+            logic.update(delta);
+            particles.update(delta);
+            scoreUI.update(delta);
             
-            // Po 10 sekundach szukamy podpowiedzi
-            if (idleTime > 10.0 && hintIndices.length === 0) {
-                const hint = logic.findHint();
-                if (hint) {
-                    hintIndices = hint;
-                } else {
-                    // Sytuacja: Czas minął, a ruchu nie ma -> Deadlock
-                    // GameManager ma własną obsługę na starcie tury, ale to jest fallback "w czasie rzeczywistym"
-                    // dla gracza, który myśli > 10s.
-                    const fix = logic.findDeadlockFix();
-                    if (fix) {
-                        // Aplikujemy fix wizualnie i logicznie
-                        logic.cells[fix.id].typeId = fix.targetType;
-                        gameManager.onDeadlockFixed?.(fix.id, fix.targetType);
+            // --- HINT LOGIC ---
+            if (logic.cells.every(c => c.state === CellState.IDLE) && !gameManager.isGameOver) {
+                idleTime += delta / 60.0; 
+                if (idleTime > 10.0 && hintIndices.length === 0) {
+                    const hint = logic.findHint();
+                    if (hint) {
+                        hintIndices = hint;
                     } else {
-                        idleTime = 0; // Reset, jeśli nawet fix się nie udał
+                        const fix = logic.findDeadlockFix();
+                        if (fix) {
+                            logic.cells[fix.id].typeId = fix.targetType;
+                            gameManager.onDeadlockFixed?.(fix.id, fix.targetType);
+                        } else {
+                            idleTime = 0; 
+                        }
                     }
                 }
+            } else {
+                idleTime = 0;
+                hintIndices = [];
             }
-        } else {
-            // Jeśli coś się dzieje na planszy, resetujemy licznik
-            idleTime = 0;
-            hintIndices = [];
-        }
 
-        // Animacja pulsowania dla klocków z hinta
-        if (hintIndices.length > 0) {
-            hintPulseTimer += delta * 0.1;
-        } else {
-            hintPulseTimer = 0;
-        }
+            if (hintIndices.length > 0) hintPulseTimer += delta * 0.1;
+            else hintPulseTimer = 0;
 
-        // UI: Status Tury
-        statusText.text = gameManager.gameStatusText;
-        if (gameManager.turnTimer < 5.0) statusText.style.fill = 0xFF0000;
-        else statusText.style.fill = 0xFFFFFF;
+            // UI Update
+            statusText.text = gameManager.gameStatusText;
+            if (gameManager.turnTimer < 5.0) statusText.style.fill = 0xFF0000;
+            else statusText.style.fill = 0xFFFFFF;
 
-        // UI: Globalny Limit
-        if (GAME_LIMIT_MODE === 'MOVES') {
-            limitText.text = `Moves Left: ${GAME_LIMIT_VALUE - gameManager.globalMovesMade}`;
-        } else if (GAME_LIMIT_MODE === 'TIME') {
-            const timeLeft = Math.max(0, GAME_LIMIT_VALUE - gameManager.globalTimeElapsed);
-            const m = Math.floor(timeLeft / 60);
-            const s = Math.floor(timeLeft % 60);
-            limitText.text = `Time Left: ${m}:${s < 10 ? '0'+s : s}`;
-        } else {
-            limitText.text = 'Sandbox Mode';
-        }
+            if (AppConfig.limitMode === 'MOVES') {
+                limitText.text = `Moves Left: ${AppConfig.limitValue - gameManager.globalMovesMade}`;
+            } else if (AppConfig.limitMode === 'TIME') {
+                const timeLeft = Math.max(0, AppConfig.limitValue - gameManager.globalTimeElapsed);
+                const m = Math.floor(timeLeft / 60);
+                const s = Math.floor(timeLeft % 60);
+                limitText.text = `Time Left: ${m}:${s < 10 ? '0'+s : s}`;
+            } else {
+                limitText.text = 'Sandbox Mode';
+            }
 
-        const selectedId = human.getSelectedId(); 
+            // Render
+            const selectedId = humanPlayer ? humanPlayer.getSelectedId() : -1;
 
-        for(let i=0; i<logic.cells.length; i++) {
-            const cell = logic.cells[i];
-            const sprite = sprites[i] as any; 
-            const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-            const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+            for(let i=0; i<logic.cells.length; i++) {
+                const cell = logic.cells[i];
+                const sprite = sprites[i] as any; 
+                const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+                const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
 
-            if (cell.typeId === -1) { sprite.visible = false; continue; }
+                if (cell.typeId === -1) { sprite.visible = false; continue; }
 
-            if (cell.state === CellState.EXPLODING) {
-                if (!sprite.processed) {
-                    const globalPos = boardContainer.toGlobal({x: drawX, y: drawY});
-                    particles.spawn(globalPos.x, globalPos.y, colors[cell.typeId]);
-                    scoreUI.addScore(cell.typeId);
-                    soundManager.playPop();
-                    shakeIntensity = 0.8; 
-                    sprite.processed = true;
+                if (cell.state === CellState.EXPLODING) {
+                    if (!sprite.processed) {
+                        const globalPos = boardContainer.toGlobal({x: drawX, y: drawY});
+                        particles.spawn(globalPos.x, globalPos.y, colors[cell.typeId]);
+                        scoreUI.addScore(cell.typeId);
+                        soundManager.playPop();
+                        shakeIntensity = 0.8; 
+                        sprite.processed = true;
+                    }
+                    sprite.visible = true; sprite.x = drawX; sprite.y = drawY;
+                    const progress = Math.max(0, cell.timer / MAX_EXPLOSION_TIME);
+                    sprite.scale.set(progress); sprite.tint = 0xFFFFFF; sprite.alpha = progress; 
+                    continue;
+                } else { sprite.processed = false; }
+
+                let scale = 1.0; let zIndex = 0; let alpha = 1.0;
+                if (cell.state === CellState.SWAPPING) { zIndex = 10; }
+                else if (cell.id === selectedId) { scale = 1.15; zIndex = 20; }
+                
+                if (hintIndices.includes(cell.id)) {
+                    alpha = 0.75 + Math.sin(hintPulseTimer) * 0.25;
                 }
-                sprite.visible = true; sprite.x = drawX; sprite.y = drawY;
-                const progress = Math.max(0, cell.timer / MAX_EXPLOSION_TIME);
-                sprite.scale.set(progress); sprite.tint = 0xFFFFFF; sprite.alpha = progress; 
-                continue;
-            } else { sprite.processed = false; }
 
-            let scale = 1.0; let zIndex = 0; let alpha = 1.0;
-            if (cell.state === CellState.SWAPPING) { zIndex = 10; }
-            else if (cell.id === selectedId) { scale = 1.15; zIndex = 20; }
-            
-            // --- APLIKACJA EFEKTU HINT ---
-            if (hintIndices.includes(cell.id)) {
-                alpha = 0.75 + Math.sin(hintPulseTimer) * 0.25;
+                sprite.visible = true; sprite.alpha = alpha; sprite.tint = colors[cell.typeId];
+                sprite.x = drawX; sprite.y = drawY; sprite.scale.set(scale); sprite.zIndex = zIndex;
             }
+            boardContainer.sortableChildren = true; 
 
-            sprite.visible = true; sprite.alpha = alpha; sprite.tint = colors[cell.typeId];
-            sprite.x = drawX; sprite.y = drawY; sprite.scale.set(scale); sprite.zIndex = zIndex;
+            if (shakeIntensity > 0) {
+                rootContainer.x = baseContainerX + (Math.random()-0.5)*shakeIntensity*10;
+                rootContainer.y = baseContainerY + (Math.random()-0.5)*shakeIntensity*10;
+                shakeIntensity -= 0.05 * delta;
+            } else { rootContainer.x = baseContainerX; rootContainer.y = baseContainerY; }
         }
-        boardContainer.sortableChildren = true; 
-
-        if (shakeIntensity > 0) {
-            gameContainer.x = baseContainerX + (Math.random()-0.5)*shakeIntensity*10;
-            gameContainer.y = baseContainerY + (Math.random()-0.5)*shakeIntensity*10;
-            shakeIntensity -= 0.05 * delta;
-        } else { gameContainer.x = baseContainerX; gameContainer.y = baseContainerY; }
     });
+}
+
+// --- HELPER: State Switching ---
+function switchState(newState: AppState) {
+    currentState = newState;
+    menuContainer.visible = (newState === 'MENU');
+    optionsContainer.visible = (newState === 'OPTIONS');
+    gameSceneContainer.visible = (newState === 'GAME');
+}
+
+// --- HELPER: Simple Button Factory ---
+function createButton(label: string, w: number, h: number, color: number, onClick: () => void) {
+    const btn = new PIXI.Container();
+    const bg = new PIXI.Graphics();
+    bg.rect(0, 0, w, h);
+    bg.fill(color);
+    bg.stroke({ width: 4, color: 0xFFFFFF });
+    btn.addChild(bg);
+
+    const txt = new PIXI.Text({ text: label, style: { fontFamily: 'Arial', fontSize: 20, fill: 0xFFFFFF, fontWeight: 'bold' } });
+    txt.anchor.set(0.5);
+    txt.x = w / 2; txt.y = h / 2;
+    btn.addChild(txt);
+
+    btn.eventMode = 'static';
+    btn.cursor = 'pointer';
+    btn.on('pointerdown', () => {
+        bg.alpha = 0.7;
+    });
+    btn.on('pointerup', () => {
+        bg.alpha = 1.0;
+        onClick();
+    });
+    btn.on('pointerupoutside', () => { bg.alpha = 1.0; });
+
+    return btn;
 }
 
 init();

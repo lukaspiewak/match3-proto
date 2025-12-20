@@ -1,7 +1,7 @@
 import { 
     COLS, ROWS, BLOCK_TYPES, CellState, type Cell, 
     CURRENT_GRAVITY, type GravityDir, 
-    COMBO_BONUS_SECONDS, CURRENT_COMBO_MODE 
+    COMBO_BONUS_SECONDS, AppConfig 
 } from './Config';
 import { Random } from './Random';
 
@@ -23,9 +23,6 @@ export interface GameStats {
 export class BoardLogic {
     public cells: Cell[];
     public needsMatchCheck: boolean = false;
-    
-    // NOWOŚĆ: Flaga sterująca telemetrią. 
-    // True = zliczamy statystyki (Tura Gracza). False = ignorujemy (Tura Bota/AI).
     public statsEnabled: boolean = false; 
 
     private readonly SWAP_SPEED = 0.20;
@@ -73,7 +70,7 @@ export class BoardLogic {
         }
     }
 
-    private initBoard() {
+    public initBoard() {
         this.cells = [];
         this.currentCombo = 0;
         this.bestCombo = 0;
@@ -103,8 +100,8 @@ export class BoardLogic {
     public update(delta: number) {
         const dt = delta / 60.0;
 
-        // Combo Logic (tylko w czasie gry)
-        if (CURRENT_COMBO_MODE === 'TIME' && this.currentCombo > 0) {
+        // Combo Logic
+        if (AppConfig.comboMode === 'TIME' && this.currentCombo > 0) {
             this.comboTimer -= dt; 
             if (this.comboTimer <= 0) {
                 this.comboTimer = 0;
@@ -112,7 +109,6 @@ export class BoardLogic {
             }
         }
 
-        // Thinking Time (Zliczamy tylko jeśli statsEnabled == true, czyli tura gracza)
         if (this.statsEnabled && !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE)) {
             this.currentThinkingTime += dt;
         }
@@ -139,14 +135,13 @@ export class BoardLogic {
         const cellA = this.cells[idxA]; const cellB = this.cells[idxB];
         if (cellA.state !== CellState.IDLE || cellB.state !== CellState.IDLE) return result;
         
-        // Zapisujemy czas myślenia (tylko jeśli statystyki włączone)
         if (this.statsEnabled) {
             this.stats.totalThinkingTime += this.currentThinkingTime;
         }
         this.currentThinkingTime = 0; 
         this.currentCascadeDepth = 0;
 
-        if (CURRENT_COMBO_MODE === 'MOVE') this.currentCombo = 0;
+        if (AppConfig.comboMode === 'MOVE') this.currentCombo = 0;
 
         const tempType = cellA.typeId; cellA.typeId = cellB.typeId; cellB.typeId = tempType;
         const matchA = this.checkMatchAt(idxA); const matchB = this.checkMatchAt(idxB);
@@ -154,18 +149,15 @@ export class BoardLogic {
         cellA.x = cellB.x; cellA.y = cellB.y; cellB.x = tempX; cellB.y = tempY;
        
        if (matchA || matchB) {
-            // POPRAWNY RUCH
             if (this.statsEnabled) {
                 this.stats.totalMoves++;
                 console.log(`✅ Player Move #${this.stats.totalMoves}`);
             }
-            
             cellA.state = CellState.SWAPPING;
             cellB.state = CellState.SWAPPING;
             result.success = true;
             result.causedMatch = true;
         } else {
-            // ZŁY RUCH
             if (this.statsEnabled) {
                 this.stats.invalidMoves++;
                 console.log(`❌ Invalid Player Move`);
@@ -189,7 +181,7 @@ export class BoardLogic {
         }
     }
 
-    private updateGravityLogic() { /* (Bez zmian - standardowa fizyka) */
+    private updateGravityLogic() { 
         const isVertical = (this.dirY !== 0);
         const primarySize = isVertical ? COLS : ROWS;
         const secondarySize = isVertical ? ROWS : COLS;
@@ -235,7 +227,7 @@ export class BoardLogic {
         }
     }
 
-    private updateMovement(delta: number) { /* (Bez zmian - standardowa fizyka) */
+    private updateMovement(delta: number) {
         for (const cell of this.cells) {
             if (cell.typeId === -1) continue;
             if (cell.state === CellState.FALLING) {
@@ -277,7 +269,6 @@ export class BoardLogic {
 
     public detectMatches() {
         const matchedIndices = new Set<number>();
-        // Standardowe wykrywanie (poziom/pion)
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS - 2; c++) {
                 const idx = c + r * COLS;
@@ -315,7 +306,7 @@ export class BoardLogic {
             this.analyzeMatchStats(matchedIndices);
 
             this.currentCombo++;
-            if (CURRENT_COMBO_MODE === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
+            if (AppConfig.comboMode === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
             
             matchedIndices.forEach(idx => {
                 const cell = this.cells[idx];
@@ -328,7 +319,6 @@ export class BoardLogic {
     private analyzeMatchStats(matchedIndices: Set<number>) {
         const visited = new Set<number>();
         const indices = Array.from(matchedIndices);
-        
         let currentMaxGroup = 0;
 
         for (const idx of indices) {
@@ -340,12 +330,9 @@ export class BoardLogic {
             while (stack.length > 0) {
                 const current = stack.pop()!;
                 groupSize++;
-                
-                // Zliczamy kolory tylko dla gracza
                 if (this.statsEnabled && this.stats.colorClears[typeId] !== undefined) {
                     this.stats.colorClears[typeId]++;
                 }
-                
                 const c = current % COLS; const r = Math.floor(current / COLS);
                 const neighbors = [{c:c+1,r:r}, {c:c-1,r:r}, {c:c,r:r+1}, {c:c,r:r-1}];
                 for (const n of neighbors) {
@@ -360,8 +347,6 @@ export class BoardLogic {
                 }
             }
             if (groupSize > currentMaxGroup) currentMaxGroup = groupSize;
-            
-            // Zliczamy rozmiary dopasowań tylko dla gracza
             if (this.statsEnabled) {
                 if (groupSize >= 5) {
                     this.stats.matchCounts[5]++;
@@ -379,7 +364,7 @@ export class BoardLogic {
     
     public getLastMoveGroupSize(): number { return this.lastMoveGroupSize; }
 
-    private checkMatchAt(idx: number): boolean { /* (Bez zmian) */ 
+    private checkMatchAt(idx: number): boolean { 
         const cell = this.cells[idx]; const type = cell.typeId; if (type === -1) return false;
         const col = idx % COLS; const row = Math.floor(idx / COLS);
         let countH = 1, i = 1; while (col-i>=0 && this.cells[idx-i].typeId===type && this.cells[idx-i].state===CellState.IDLE) { countH++; i++; }
@@ -389,7 +374,7 @@ export class BoardLogic {
         i=1; while(row+i<ROWS && this.cells[idx+i*COLS].typeId===type && this.cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
         if (countV>=3) return true; return false;
     }
-    public findHint(): number[] | null { /* (Bez zmian) */
+    public findHint(): number[] | null {
         if (!this.cells.every(c => c.state === CellState.IDLE)) return null;
         for (let idx = 0; idx < this.cells.length; idx++) {
             const cell = this.cells[idx]; if (cell.typeId === -1) continue;
@@ -398,12 +383,12 @@ export class BoardLogic {
             if (row < ROWS - 1) { const dI = idx + COLS; if (this.cells[dI].typeId!==-1 && this.simulateSwap(idx,dI)) return [idx,dI]; }
         } return null;
     }
-    private simulateSwap(idxA: number, idxB: number): boolean { /* (Bez zmian) */
+    private simulateSwap(idxA: number, idxB: number): boolean {
         const t = this.cells[idxA].typeId; this.cells[idxA].typeId = this.cells[idxB].typeId; this.cells[idxB].typeId = t;
         const h = this.checkMatchAt(idxA) || this.checkMatchAt(idxB);
         this.cells[idxB].typeId = this.cells[idxA].typeId; this.cells[idxA].typeId = t; return h;
     }
-    public findDeadlockFix(): { id: number, targetType: number } | null { /* (Bez zmian) */
+    public findDeadlockFix(): { id: number, targetType: number } | null {
         for (let i = 0; i < this.cells.length; i++) {
             const o = this.cells[i].typeId; if (o === -1) continue;
             for (let t = 0; t < BLOCK_TYPES; t++) {
