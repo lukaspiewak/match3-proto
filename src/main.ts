@@ -61,11 +61,12 @@ async function init() {
     rootContainer.addChild(optionsContainer);
     rootContainer.addChild(gameSceneContainer);
 
+    // Domyślnie pokaż Menu
     switchState('MENU');
 
     // --- GAME SCENE SETUP ---
     soundManager = new SoundManager();
-    particles = new ParticleSystem(app); 
+    particles = new ParticleSystem(app); // Particles są globalne na stage
     
     logic = new BoardLogic();
     logic.onBadMove = () => { soundManager.playBadMove(); if (navigator.vibrate) navigator.vibrate(50); };
@@ -73,9 +74,8 @@ async function init() {
     gameManager = new GameManager(logic);
 
     // ========================================================================
-    // WARSTWA 1: PLANSZA (TŁO + KLOCKI)
+    // WARSTWA 1: PLANSZA (TŁO + KLOCKI) - Rysujemy to najpierw (na spodzie)
     // ========================================================================
-    // Zapisujemy oryginalną pozycję Y planszy, żeby móc do niej wracać
     const boardOriginalY = GAME_LOGICAL_HEIGHT - BOARD_HEIGHT - MARGIN;
     const boardLocalX = MARGIN;
     
@@ -89,6 +89,7 @@ async function init() {
     boardBg.fill({ color: 0x000000, alpha: 0.5 });
     bgContainer.addChild(boardBg);
 
+    // Siatka (sloty)
     for(let i=0; i<COLS * ROWS; i++) {
         const col = i % COLS; const row = Math.floor(i / COLS);
         const slot = new PIXI.Graphics();
@@ -98,6 +99,7 @@ async function init() {
         bgContainer.addChild(slot);
     }
 
+    // Kontener na same klocki
     const boardContainer = new PIXI.Container();
     boardContainer.x = boardLocalX; 
     boardContainer.y = boardOriginalY;
@@ -110,15 +112,16 @@ async function init() {
     boardContainer.mask = mask;
 
     // ========================================================================
-    // WARSTWA 2: UI (HUD) - Przypięte do góry
+    // WARSTWA 2: UI (HUD) - Rysujemy to później (na wierzchu)
     // ========================================================================
     
+    // 1. Statusy (Góra)
     const limitText = new PIXI.Text({
         text: '',
         style: { fontFamily: 'Arial', fontSize: 18, fontWeight: 'bold', fill: 0xFFD700, stroke: { color: 0x000000, width: 3 } }
     });
     limitText.x = MARGIN;
-    limitText.y = 30; 
+    limitText.y = 30; // Wyrównanie do przycisku
     gameSceneContainer.addChild(limitText);
 
     const statusText = new PIXI.Text({
@@ -130,6 +133,7 @@ async function init() {
     statusText.y = 25; 
     gameSceneContainer.addChild(statusText);
 
+    // 2. Przycisk MENU (Środek Góra)
     const backButton = createButton("MENU", 80, 40, 0x555555, () => {
         gameManager.resetGame();
         switchState('MENU');
@@ -138,6 +142,7 @@ async function init() {
     backButton.y = 20; 
     gameSceneContainer.addChild(backButton);
 
+    // 3. Panel Punktów (Pod menu, ale NAD planszą wizualnie)
     const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF];
     scoreUI = new ScoreUI(colors, 80, 100); 
     scoreUI.container.x = GAME_LOGICAL_WIDTH / 2; 
@@ -145,7 +150,7 @@ async function init() {
     // @ts-ignore
     gameSceneContainer.addChild(scoreUI.container); 
 
-    // --- BUDOWA MENU ---
+    // --- BUDOWA MENU (menuContainer) ---
     const titleText = new PIXI.Text({
         text: 'MATCH-3 ENGINE',
         style: { fontFamily: 'Arial', fontSize: 40, fontWeight: 'bold', fill: 0xFFFFFF, align: 'center' }
@@ -179,12 +184,13 @@ async function init() {
     btnOptions.y = 360;
     menuContainer.addChild(btnOptions);
 
-    // --- BUDOWA OPTIONS ---
+    // --- BUDOWA OPTIONS (optionsContainer) ---
     const optionsTitle = new PIXI.Text({ text: 'OPTIONS', style: { fill: 0xFFFFFF, fontSize: 32 } });
     optionsTitle.anchor.set(0.5);
     optionsTitle.x = GAME_LOGICAL_WIDTH / 2; optionsTitle.y = 50;
     optionsContainer.addChild(optionsTitle);
 
+    // Dynamiczne przyciski opcji
     let optY = 120;
     const createOptionToggle = (label: string, onClick: () => void) => {
         const btn = createButton(label, 300, 50, 0x444444, onClick);
@@ -231,13 +237,16 @@ async function init() {
         (btnOptSeed.children[1] as PIXI.Text).text = `SEED: ${AppConfig.seed}`;
     }
 
+    // --- FUNKCJA STARTU GRY ---
     function startGame() {
         switchState('GAME');
         Random.setSeed(AppConfig.seed);
         scoreUI.reset(100); 
         gameManager.clearPlayers();
 
-        humanPlayer = new HumanPlayerController(PLAYER_ID_1, gameManager, logic, app, boardContainer, soundManager);
+        // Tworzenie graczy
+        // USUNIĘTO: argument 'app' z konstruktora
+        humanPlayer = new HumanPlayerController(PLAYER_ID_1, gameManager, logic, boardContainer, soundManager);
         gameManager.registerPlayer(humanPlayer);
 
         if (AppConfig.gameMode === 'VS_AI') {
@@ -248,14 +257,18 @@ async function init() {
         gameManager.startGame();
     }
 
+    // --- CALLBACKI MANAGERA ---
     gameManager.onDeadlockFixed = (id, type) => {
         const cell = logic.cells[id];
         const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
         const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
         const globalPos = boardContainer.toGlobal({x: drawX, y: drawY});
+        
         particles.spawn(globalPos.x, globalPos.y, colors[type]);
         soundManager.playPop();
-        idleTime = 0; hintIndices = [];
+        
+        idleTime = 0;
+        hintIndices = [];
     };
 
     gameManager.onGameFinished = (reason) => {
@@ -277,6 +290,7 @@ async function init() {
         });
     };
 
+    // --- SPRITY ---
     const sprites: PIXI.Graphics[] = [];
     for(let i=0; i<logic.cells.length; i++) {
         const g = new PIXI.Graphics();
@@ -291,16 +305,6 @@ async function init() {
     let shakeIntensity = 0;
     let baseContainerX = 0; let baseContainerY = 0;
 
-    let idleTime = 0;
-    let hintIndices: number[] = [];
-    let hintPulseTimer = 0;
-
-    app.stage.eventMode = 'static';
-    app.stage.on('pointerdown', () => {
-        idleTime = 0;
-        hintIndices = []; 
-    });
-
     // --- NOWA FUNKCJA RESIZE ---
     // Przeniesiona tutaj, aby "widziała" boardContainer i bgContainer
     const resize = () => {
@@ -310,7 +314,6 @@ async function init() {
         // Centrowanie w poziomie
         baseContainerX = (app.screen.width - GAME_LOGICAL_WIDTH * scale) / 2;
         
-        // --- ZMIANA: PRZYPINANIE DO GÓRY ---
         // Ustawiamy rootContainer zawsze na górze ekranu (Y=0)
         baseContainerY = 0;
         
@@ -325,7 +328,6 @@ async function init() {
 
         if (extraSpace > 0) {
             // Jeśli jest wolne miejsce na dole, przesuwamy tam PLANSZĘ.
-            // UI (ScoreUI, przyciski) zostają na swoich oryginalnych pozycjach (czyli u góry).
             bgContainer.y = boardOriginalY + extraSpace;
             boardContainer.y = boardOriginalY + extraSpace;
         } else {
@@ -335,9 +337,19 @@ async function init() {
         }
     };
     
-    // Inicjalizacja resize
     window.addEventListener('resize', resize); 
     resize(); 
+
+    // --- HINT VARS ---
+    let idleTime = 0;
+    let hintIndices: number[] = [];
+    let hintPulseTimer = 0;
+
+    app.stage.eventMode = 'static';
+    app.stage.on('pointerdown', () => {
+        idleTime = 0;
+        hintIndices = []; 
+    });
 
     // --- GAME LOOP ---
     app.ticker.add((ticker) => {
@@ -349,6 +361,7 @@ async function init() {
             particles.update(delta);
             scoreUI.update(delta);
             
+            // --- HINT LOGIC ---
             if (logic.cells.every(c => c.state === CellState.IDLE) && !gameManager.isGameOver) {
                 idleTime += delta / 60.0; 
                 if (idleTime > 10.0 && hintIndices.length === 0) {
@@ -373,6 +386,7 @@ async function init() {
             if (hintIndices.length > 0) hintPulseTimer += delta * 0.1;
             else hintPulseTimer = 0;
 
+            // UI Update
             statusText.text = gameManager.gameStatusText;
             if (gameManager.turnTimer < 5.0) statusText.style.fill = 0xFF0000;
             else statusText.style.fill = 0xFFFFFF;
@@ -388,6 +402,7 @@ async function init() {
                 limitText.text = 'Sandbox Mode';
             }
 
+            // Render
             const selectedId = humanPlayer ? humanPlayer.getSelectedId() : -1;
 
             for(let i=0; i<logic.cells.length; i++) {
@@ -435,6 +450,7 @@ async function init() {
     });
 }
 
+// --- HELPER: State Switching ---
 function switchState(newState: AppState) {
     currentState = newState;
     menuContainer.visible = (newState === 'MENU');
@@ -442,6 +458,7 @@ function switchState(newState: AppState) {
     gameSceneContainer.visible = (newState === 'GAME');
 }
 
+// --- HELPER: Simple Button Factory ---
 function createButton(label: string, w: number, h: number, color: number, onClick: () => void) {
     const btn = new PIXI.Container();
     const bg = new PIXI.Graphics();
@@ -452,12 +469,18 @@ function createButton(label: string, w: number, h: number, color: number, onClic
 
     const txt = new PIXI.Text({ text: label, style: { fontFamily: 'Arial', fontSize: 20, fill: 0xFFFFFF, fontWeight: 'bold' } });
     txt.anchor.set(0.5);
+    // txt is already at 0,0 which is center
     btn.addChild(txt);
 
     btn.eventMode = 'static';
     btn.cursor = 'pointer';
-    btn.on('pointerdown', () => { bg.alpha = 0.7; });
-    btn.on('pointerup', () => { bg.alpha = 1.0; onClick(); });
+    btn.on('pointerdown', () => {
+        bg.alpha = 0.7;
+    });
+    btn.on('pointerup', () => {
+        bg.alpha = 1.0;
+        onClick();
+    });
     btn.on('pointerupoutside', () => { bg.alpha = 1.0; });
 
     return btn;
