@@ -100,12 +100,22 @@ export class BoardLogic {
     public update(delta: number) {
         const dt = delta / 60.0;
 
-        // Combo Logic
+        // --- ZMIENIONA LOGIKA COMBO ---
         if (AppConfig.comboMode === 'TIME' && this.currentCombo > 0) {
-            this.comboTimer -= dt; 
-            if (this.comboTimer <= 0) {
-                this.comboTimer = 0;
-                this.currentCombo = 0; 
+            // Sprawdzamy czy coś się dzieje na planszy (animacje)
+            const isBoardBusy = !this.cells.every(c => c.state === CellState.IDLE);
+            
+            // Pauzujemy licznik TYLKO JEŚLI:
+            // 1. Nie gramy w trybie SOLO (czyli gramy w trybie turowym VS, gdzie ruch jest zablokowany)
+            // 2. Plansza wykonuje animacje (jest zajęta)
+            const shouldPause = (AppConfig.gameMode !== 'SOLO' && isBoardBusy);
+
+            if (!shouldPause) {
+                this.comboTimer -= dt; 
+                if (this.comboTimer <= 0) {
+                    this.comboTimer = 0;
+                    this.currentCombo = 0; 
+                }
             }
         }
 
@@ -133,6 +143,8 @@ export class BoardLogic {
         
         const idxB = targetCol + targetRow * COLS;
         const cellA = this.cells[idxA]; const cellB = this.cells[idxB];
+        
+        // Zabezpieczenie fizyki (nie można ruszyć spadającego klocka)
         if (cellA.state !== CellState.IDLE || cellB.state !== CellState.IDLE) return result;
         
         if (this.statsEnabled) {

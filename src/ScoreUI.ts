@@ -8,31 +8,42 @@ export class ScoreUI {
     private labels: PIXI.Text[] = [];      
     
     private values: number[] = [0, 0, 0, 0, 0];
-    
     private maxScore: number;
-    private barWidth: number = 40;
-    private barHeight: number = 100;
-    private spacing: number = 20;
+    
+    // Mniejsze wymiary
+    private barWidth: number = 16;  
+    private barHeight: number = 70; 
+    private spacing: number = 12;   
 
     constructor(colors: number[], yPosition: number, maxScore: number = 100) {
         this.maxScore = maxScore;
         this.container = new PIXI.Container();
-        this.container.x = 20; 
         this.container.y = yPosition;
+
+        // Tło panelu
+        const totalWidth = (colors.length * this.barWidth) + ((colors.length - 1) * this.spacing);
+        const padding = 10;
+        
+        const bgPanel = new PIXI.Graphics();
+        bgPanel.roundRect(-padding, -padding, totalWidth + (padding * 2), this.barHeight + 25, 10);
+        bgPanel.fill({ color: 0x000000, alpha: 0.5 });
+        bgPanel.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 });
+        this.container.addChild(bgPanel);
 
         colors.forEach((color, index) => {
             const barContainer = new PIXI.Container();
             barContainer.x = index * (this.barWidth + this.spacing);
             this.container.addChild(barContainer);
 
-            // 1. Tło
+            // 1. Tło paska (Jaśniejsze, żeby było widać puste)
             const bg = new PIXI.Graphics();
             bg.rect(0, 0, this.barWidth, this.barHeight);
-            bg.fill({ color: 0x000000, alpha: 0.5 });
-            bg.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.2 });
+            // Ciemnoszary zamiast czarnego
+            bg.fill({ color: 0x333333, alpha: 1.0 }); 
+            bg.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.2 });
             barContainer.addChild(bg);
 
-            // 2. Wypełnienie
+            // 2. Wypełnienie (kolorowe)
             const fill = new PIXI.Graphics();
             fill.rect(0, 0, this.barWidth, this.barHeight);
             fill.fill(color);
@@ -56,31 +67,25 @@ export class ScoreUI {
             // 4. Licznik
             const label = new PIXI.Text({
                 text: '0',
-                style: {
-                    fontFamily: 'Arial',
-                    fontSize: 16,
-                    fontWeight: 'bold',
-                    fill: 0xFFFFFF,
-                    align: 'center'
-                }
+                style: { fontFamily: 'Arial', fontSize: 12, fontWeight: 'bold', fill: 0xFFFFFF, align: 'center' }
             });
             label.anchor.set(0.5, 0); 
             label.x = this.barWidth / 2;
-            label.y = this.barHeight + 5; 
+            label.y = this.barHeight + 2; 
             barContainer.addChild(label);
             this.labels.push(label);
         });
+        
+        // Pivot na środek (do łatwego centrowania w main.ts)
+        this.container.pivot.x = totalWidth / 2;
     }
 
     public addScore(colorId: number) {
         if (this.values[colorId] < this.maxScore) {
             this.values[colorId]++;
-            
             const targetScale = this.values[colorId] / this.maxScore;
-            
             this.bars[colorId].scale.y = targetScale;
             this.labels[colorId].text = this.values[colorId].toString();
-
             const flash = this.flashes[colorId];
             flash.scale.y = targetScale; 
             flash.alpha = 0.8; 
@@ -97,17 +102,15 @@ export class ScoreUI {
     }
 
     public getBarPosition(colorId: number): { x: number, y: number } {
-        const x = this.container.x + (colorId * (this.barWidth + this.spacing)) + (this.barWidth / 2);
+        // Uwzględniamy pivot
+        const x = this.container.x - this.container.pivot.x + (colorId * (this.barWidth + this.spacing)) + (this.barWidth / 2);
         const y = this.container.y + (this.barHeight / 2);
         return { x, y };
     }
 
-    // --- NOWA METODA: Reset i zmiana pojemności ---
     public reset(newMaxScore: number) {
         this.maxScore = newMaxScore;
         this.values = [0, 0, 0, 0, 0];
-        
-        // Resetujemy wizualnie wszystkie paski
         for (let i = 0; i < this.bars.length; i++) {
             this.bars[i].scale.y = 0;
             this.flashes[i].scale.y = 0;
