@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { BoardLogic } from './BoardLogic';
 import { GameManager } from './GameManager';
 import { TILE_SIZE, COLS } from './Config';
-
+import { SoundManager } from './SoundManager';
 // Abstrakcja Gracza
 export abstract class PlayerController {
     protected manager: GameManager;
@@ -24,6 +24,7 @@ export class HumanPlayerController extends PlayerController {
     private selectedId: number = -1;
     private app: PIXI.Application;
     private boardContainer: PIXI.Container;
+    private soundManager: SoundManager;
 
     // Zmienne do obsługi Swipe/Drag
     private isDragging: boolean = false;
@@ -31,10 +32,11 @@ export class HumanPlayerController extends PlayerController {
     private startY: number = 0;
     private startId: number = -1;
 
-    constructor(id: number, manager: GameManager, logic: BoardLogic, app: PIXI.Application, boardContainer: PIXI.Container) {
+    constructor(id: number, manager: GameManager, logic: BoardLogic, app: PIXI.Application, boardContainer: PIXI.Container, soundManager: SoundManager) {
         super(id, manager, logic);
         this.app = app;
         this.boardContainer = boardContainer;
+        this.soundManager = soundManager;
         this.setupInput();
     }
 
@@ -60,6 +62,7 @@ export class HumanPlayerController extends PlayerController {
     }
 
     private onPointerDown(e: PIXI.FederatedPointerEvent) {
+        this.soundManager.init();
         if (!this.manager.isMyTurn(this.id)) return;
 
         const pos = this.getBoardPos(e);
@@ -85,9 +88,9 @@ export class HumanPlayerController extends PlayerController {
 
         const deltaX = e.global.x - this.startX;
         const deltaY = e.global.y - this.startY;
-        
+
         // Próg przesunięcia (np. połowa klocka lub sztywna wartość w pikselach)
-        const THRESHOLD = TILE_SIZE * 0.5; 
+        const THRESHOLD = TILE_SIZE * 0.5;
 
         if (Math.abs(deltaX) > THRESHOLD || Math.abs(deltaY) > THRESHOLD) {
             // Wykryto SWIPE!
@@ -115,7 +118,7 @@ export class HumanPlayerController extends PlayerController {
         // Jeśli puściliśmy myszkę/palec, a nie było swipe'a, traktujemy to jako zwykłe kliknięcie
         if (this.isDragging) {
             const pos = this.getBoardPos(e);
-            
+
             // Jeśli puszczamy na tym samym klocku co start, to jest to "wybór" (Click)
             // Jeśli puszczamy na innym, to może być próba Drag&Drop
             if (pos && pos.id !== this.startId) {
@@ -155,13 +158,13 @@ export class HumanPlayerController extends PlayerController {
         }
     }
 
-    public update(delta: number): void {}
+    public update(delta: number): void { }
 
     public onTurnStart(): void {
         this.selectedId = -1;
         this.cancelDrag();
     }
-    
+
     public getSelectedId(): number {
         if (!this.manager.isMyTurn(this.id)) return -1;
         return this.selectedId;
@@ -171,13 +174,13 @@ export class HumanPlayerController extends PlayerController {
 // Implementacja: BOT
 export class BotPlayerController extends PlayerController {
     private thinkTimer: number = 0;
-    private readonly THINK_DELAY = 1.0; 
+    private readonly THINK_DELAY = 1.0;
 
     public update(delta: number): void {
         this.thinkTimer += delta / 60.0;
         if (this.thinkTimer >= this.THINK_DELAY) {
             this.makeMove();
-            this.thinkTimer = 0; 
+            this.thinkTimer = 0;
         }
     }
 

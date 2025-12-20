@@ -142,7 +142,7 @@ async function init() {
     };
 
     // --- GRACZE ---
-    const human = new HumanPlayerController(PLAYER_ID_1, gameManager, logic, app, boardContainer);
+    const human = new HumanPlayerController(PLAYER_ID_1, gameManager, logic, app, boardContainer, soundManager);
     gameManager.registerPlayer(human);
 
     if (CURRENT_GAME_MODE === 'VS_AI') {
