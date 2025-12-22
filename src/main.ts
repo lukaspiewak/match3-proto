@@ -2,8 +2,7 @@ import * as PIXI from 'pixi.js';
 import { SceneManager } from './SceneManager';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
-// ZMIANA: Import rejestru
-import { BlockRegistry } from './BlockDef';
+import { BlockRegistry } from './BlockDef'; // Importujemy Rejestr
 
 const app = new PIXI.Application();
 
@@ -18,9 +17,10 @@ async function init() {
     window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
 
     // --- PRELOAD ASSETS ---
-    // Pobieramy listę z rejestru
+    // Pobieramy manifest assetów dynamicznie z definicji bloków
     const assetsToLoad = BlockRegistry.getAssetManifest();
 
+    // Ładujemy pliki równolegle, ignorując błędy dla pojedynczych plików (fallback textowy)
     const loadPromises = assetsToLoad.map(async (asset) => {
         try {
             await PIXI.Assets.load(asset);

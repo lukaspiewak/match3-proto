@@ -7,12 +7,12 @@ import { ParticleSystem } from '../ParticleSystem';
 import { ScoreUI } from '../ScoreUI';
 import { HumanPlayerController, BotPlayerController } from '../PlayerController';
 import { Button } from '../ui/Button';
+import { BlockView } from '../views/BlockView'; // Importujemy naszą nową klasę
 import { 
     COLS, ROWS, TILE_SIZE, GAP, CellState, 
     PLAYER_ID_1, PLAYER_ID_2, AppConfig 
 } from '../Config';
 import { Random } from '../Random';
-// ZMIANA: Import rejestru
 import { BlockRegistry } from '../BlockDef';
 
 export class GameScene extends PIXI.Container implements Scene {
@@ -33,8 +33,8 @@ export class GameScene extends PIXI.Container implements Scene {
     private bgContainer: PIXI.Container;
     private boardContainer: PIXI.Container;
     
-    private sprites: PIXI.Graphics[] = [];
-    // ZMIANA: Zamiast lokalnej tablicy kolorów, używamy rejestru
+    // ZMIANA: Tablica przechowuje teraz BlockView!
+    private sprites: BlockView[] = [];
     
     private idleTime = 0;
     private hintIndices: number[] = [];
@@ -147,7 +147,6 @@ export class GameScene extends PIXI.Container implements Scene {
         Random.setSeed(AppConfig.seed);
         this.gameManager.clearPlayers();
         
-        // ZMIANA: Pobieramy listę kolorów z rejestru dla UI punktów
         const activeBlocks = BlockRegistry.getAll().slice(0, AppConfig.blockTypes);
         const activeColors = activeBlocks.map(b => b.color);
 
@@ -173,20 +172,16 @@ export class GameScene extends PIXI.Container implements Scene {
             this.gameManager.registerPlayer(bot);
         }
 
+        // Czyścimy stare sprite'y
         this.sprites.forEach(s => s.destroy());
         this.sprites = [];
         this.logic.initBoard(); 
         
         for(let i=0; i<this.logic.cells.length; i++) {
-            const g = new PIXI.Graphics();
-            g.rect(0, 0, TILE_SIZE - GAP, TILE_SIZE - GAP);
-            g.fill(0xFFFFFF);
-            g.pivot.set((TILE_SIZE - GAP) / 2, (TILE_SIZE - GAP) / 2);
-            
-            (g as any).currentTypeId = -2; 
-            
-            this.boardContainer.addChild(g);
-            this.sprites.push(g);
+            // ZMIANA KLUCZOWA: Tworzymy instancję BlockView!
+            const blockView = new BlockView();
+            this.boardContainer.addChild(blockView);
+            this.sprites.push(blockView);
         }
 
         this.gameManager.startGame();
@@ -253,80 +248,25 @@ export class GameScene extends PIXI.Container implements Scene {
         }
     }
 
-    // --- ZMIANA: Używamy BlockDef zamiast tablic ---
-    private updateBlockVisuals(container: PIXI.Graphics, typeId: number) {
-        if ((container as any).currentTypeId === typeId) return;
-        (container as any).currentTypeId = typeId;
-
-        if ((container as any).iconChild) {
-            container.removeChild((container as any).iconChild);
-            (container as any).iconChild.destroy();
-            (container as any).iconChild = null;
-        }
-
-        if (typeId < 0) return;
-
-        // Pobieramy definicję bloku
-        const block = BlockRegistry.getById(typeId);
-        if (!block) return;
-
-        // 1. Sprawdzamy asset
-        const alias = block.assetAlias;
-        if (PIXI.Assets.cache.has(alias)) {
-            const texture = PIXI.Assets.get(alias);
-            const sprite = new PIXI.Sprite(texture);
-            sprite.anchor.set(0.5);
-            sprite.x = (TILE_SIZE - GAP) / 2;
-            sprite.y = (TILE_SIZE - GAP) / 2;
-            
-            const scale = (TILE_SIZE - GAP) / Math.max(texture.width, texture.height);
-            sprite.scale.set(scale * 0.8); 
-
-            container.addChild(sprite);
-            (container as any).iconChild = sprite;
-        } 
-        // 2. Fallback: Symbol tekstowy
-        else {
-            const symbol = block.symbol || '?';
-            const text = new PIXI.Text({
-                text: symbol,
-                style: {
-                    fontFamily: 'Arial',
-                    fontSize: 32,
-                    fontWeight: 'bold',
-                    fill: 0x000000,
-                    align: 'center',
-                    alpha: 0.6
-                }
-            });
-            text.anchor.set(0.5);
-            text.x = (TILE_SIZE - GAP) / 2;
-            text.y = (TILE_SIZE - GAP) / 2;
-
-            container.addChild(text);
-            (container as any).iconChild = text;
-        }
-    }
-
     private renderBoard() {
         const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
         const selectedId = human ? human.getSelectedId() : -1;
 
         for(let i=0; i<this.logic.cells.length; i++) {
             const cell = this.logic.cells[i];
-            const sprite = this.sprites[i] as any; 
+            
+            // Tutaj sprite jest teraz typu BlockView
+            const sprite = this.sprites[i]; 
             const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
             const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
 
             if (cell.typeId === -1) { sprite.visible = false; continue; }
 
-            // Pobieramy dane bloku
             const blockDef = BlockRegistry.getById(cell.typeId);
 
             if (cell.state === CellState.EXPLODING) {
-                if (!sprite.processed) {
+                if (!(sprite as any).processed) {
                     const globalPos = this.boardContainer.toGlobal({x: drawX, y: drawY});
-                    // ZMIANA: Kolor z definicji
                     this.particles.spawn(globalPos.x, globalPos.y, blockDef.color);
                     
                     const currentId = this.gameManager.getCurrentPlayerId();
@@ -335,13 +275,13 @@ export class GameScene extends PIXI.Container implements Scene {
                     else this.scoreUI.addScore(cell.typeId);
 
                     this.soundManager.playPop();
-                    sprite.processed = true;
+                    (sprite as any).processed = true;
                 }
                 sprite.visible = true; sprite.x = drawX; sprite.y = drawY;
                 const progress = Math.max(0, cell.timer / 15.0); 
-                sprite.scale.set(progress); sprite.tint = 0xFFFFFF; sprite.alpha = progress; 
+                sprite.scale.set(progress); sprite.alpha = progress; 
                 continue;
-            } else { sprite.processed = false; }
+            } else { (sprite as any).processed = false; }
 
             let scale = 1.0; let zIndex = 0; let alpha = 1.0;
             if (cell.state === CellState.SWAPPING) { zIndex = 10; }
@@ -351,13 +291,15 @@ export class GameScene extends PIXI.Container implements Scene {
                 alpha = 0.75 + Math.sin(this.hintPulseTimer) * 0.25;
             }
 
-            sprite.visible = true; sprite.alpha = alpha;
-            // ZMIANA: Tint z definicji
-            sprite.tint = blockDef.color;
+            sprite.visible = true; 
+            sprite.alpha = alpha;
+            sprite.zIndex = zIndex;
+            sprite.x = drawX; 
+            sprite.y = drawY; 
+            sprite.scale.set(scale); 
             
-            this.updateBlockVisuals(sprite, cell.typeId);
-
-            sprite.x = drawX; sprite.y = drawY; sprite.scale.set(scale); sprite.zIndex = zIndex;
+            // ZMIANA KLUCZOWA: Teraz BlockView ma metodę updateVisuals
+            sprite.updateVisuals(cell.typeId);
         }
         this.boardContainer.sortableChildren = true;
     }
@@ -374,7 +316,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.idleTime = 0; this.hintIndices = [];
     }
 
-    // ... (onGameFinished i resize bez zmian, tylko użycie klasy)
     private onGameFinished(reason: string) {
         const overlay = new PIXI.Graphics();
         overlay.rect(0, 0, this.GAME_LOGICAL_WIDTH, this.GAME_LOGICAL_HEIGHT);

@@ -34,24 +34,8 @@ export const TURN_TIME_LIMIT = 15.0;
 export const PLAYER_ID_NONE = -1;
 export const PLAYER_ID_1 = 0; 
 export const PLAYER_ID_2 = 1; 
-export const COMBO_BONUS_SECONDS = 1.0; // Upewnij się, że to tu jest!
+export const COMBO_BONUS_SECONDS = 1.0; 
 export const CURRENT_GRAVITY: GravityDir = 'DOWN'; 
-
-// --- PALETA KOLORÓW ---
-export const ALL_AVAILABLE_COLORS = [
-    0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 
-    0xFF00FF, 0x00FFFF, 0xFFA500
-];
-
-// --- FALLBACK: IKONY TEKSTOWE ---
-export const BLOCK_ICONS = ['♥', '♣', '♦', '$', '♠', '●', '▲'];
-
-// --- SCIEŻKI DO ASSETÓW SVG ---
-export const BLOCK_ASSET_PATHS = [
-    '/assets/block_0.svg', '/assets/block_1.svg', '/assets/block_2.svg', 
-    '/assets/block_3.svg', '/assets/block_4.svg', '/assets/block_5.svg', 
-    '/assets/block_6.svg'
-];
 
 // --- KONFIGURACJA RUNTIME ---
 export const AppConfig = {
