@@ -58,12 +58,17 @@ export class GameManager {
     public update(delta: number) {
         if (this.isGameOver) return;
 
+        const currentPlayer = this.players[this.currentPlayerIndex];
+
         // 1. Globalny Czas Gry (jeśli włączony)
         if (AppConfig.limitMode === 'TIME') {
-            this.globalTimeElapsed += delta / 60.0;
-            if (this.globalTimeElapsed >= AppConfig.limitValue) {
-                this.finishGame("TIME_LIMIT_REACHED");
-                return;
+            // Czas globalny płynie tylko podczas tury gracza (chyba że to Solo)
+            if (currentPlayer.id === PLAYER_ID_1) {
+                this.globalTimeElapsed += delta / 60.0;
+                if (this.globalTimeElapsed >= AppConfig.limitValue) {
+                    this.finishGame("TIME_LIMIT_REACHED");
+                    return;
+                }
             }
         }
 
@@ -79,14 +84,25 @@ export class GameManager {
             }
             const dt = delta / 60.0;
             this.turnTimer -= dt;
+            
             if (this.turnTimer <= 0) {
                 console.log("⏰ TURN TIME OUT! Skipped.");
+                
+                // --- POPRAWKA: Timeout też zużywa ruch w trybie MOVES ---
+                if (currentPlayer.id === PLAYER_ID_1 && AppConfig.limitMode === 'MOVES') {
+                    this.globalMovesMade++;
+                    // Sprawdzamy czy to nie był ostatni ruch
+                    if (this.globalMovesMade >= AppConfig.limitValue) {
+                        this.finishGame("MOVE_LIMIT_REACHED");
+                        return;
+                    }
+                }
+
                 this.endTurn();
                 return;
             }
         }
 
-        const currentPlayer = this.players[this.currentPlayerIndex];
         if (currentPlayer) {
             currentPlayer.update(delta);
         }

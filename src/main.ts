@@ -114,27 +114,25 @@ async function init() {
     // ========================================================================
     // WARSTWA 2: UI (HUD)
     // ========================================================================
-    const TOP_BAR_Y = 40;
-
+    
     // 1. LEWA: Panel Punktów (ScoreUI)
     const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF];
     scoreUI = new ScoreUI(colors, 0, 100); 
-    // Umieszczamy po lewej stronie, z małym marginesem
     scoreUI.container.x = MARGIN; 
-    scoreUI.container.y = 20; // Trochę od góry
+    scoreUI.container.y = 20; 
     // @ts-ignore
     gameSceneContainer.addChild(scoreUI.container); 
 
-    // 2. ŚRODEK: Okrągły Stoper (Licznik ruchów/czasu)
+    // 2. ŚRODEK: Okrągły Stoper (Globalny Limit)
     const timerContainer = new PIXI.Container();
     timerContainer.x = GAME_LOGICAL_WIDTH / 2;
-    timerContainer.y = 45; // Środek koła
+    timerContainer.y = 45; 
     gameSceneContainer.addChild(timerContainer);
 
     const timerBg = new PIXI.Graphics();
-    timerBg.circle(0, 0, 30); // Promień 30
+    timerBg.circle(0, 0, 30); 
     timerBg.fill({ color: 0x222222 });
-    timerBg.stroke({ width: 3, color: 0xFFD700 }); // Złota obwódka
+    timerBg.stroke({ width: 3, color: 0xFFD700 }); 
     timerContainer.addChild(timerBg);
 
     timerValueText = new PIXI.Text({
@@ -144,25 +142,33 @@ async function init() {
     timerValueText.anchor.set(0.5);
     timerContainer.addChild(timerValueText);
 
-    // Mały podpis pod kołem
     const timerLabel = new PIXI.Text({
         text: 'LIMIT',
         style: { fontFamily: 'Arial', fontSize: 10, fill: 0xAAAAAA, align: 'center' }
     });
     timerLabel.anchor.set(0.5);
-    timerLabel.y = 20; // Przesunięcie w dół wewnątrz koła (lub pod nim)
+    timerLabel.y = 20; 
     timerContainer.addChild(timerLabel);
-
 
     // 3. PRAWA: Ikona Menu (☰)
     const menuBtn = createButton("☰", 50, 50, 0x444444, () => {
         gameManager.resetGame();
         switchState('MENU');
     });
-    // Pozycjonowanie w prawym górnym rogu
-    menuBtn.x = GAME_LOGICAL_WIDTH - MARGIN - 25; // -25 bo szerokość 50 i pivot w środku
+    menuBtn.x = GAME_LOGICAL_WIDTH - MARGIN - 25; 
     menuBtn.y = 45; 
     gameSceneContainer.addChild(menuBtn);
+
+    // 4. POPRAWKA: Czas Tury / Status (statusText)
+    // Umieszczamy go po LEWEJ stronie przycisku MENU, aby nie był zasłonięty
+    const statusText = new PIXI.Text({
+        text: 'Init...',
+        style: { fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', fill: 0xFFFFFF, align: 'right', stroke: { color: 0x000000, width: 3 } }
+    });
+    statusText.anchor.set(1, 0.5); // Anchor na prawy środek
+    statusText.x = menuBtn.x - 35; // Odsuwamy w lewo od przycisku menu
+    statusText.y = menuBtn.y;      // Ta sama wysokość co środek przycisku
+    gameSceneContainer.addChild(statusText);
 
     // --- BUDOWA MENU (menuContainer) ---
     const titleText = new PIXI.Text({
@@ -324,7 +330,7 @@ async function init() {
         const scale = Math.min(app.screen.width / GAME_LOGICAL_WIDTH, app.screen.height / GAME_LOGICAL_HEIGHT); 
         rootContainer.scale.set(scale);
         baseContainerX = (app.screen.width - GAME_LOGICAL_WIDTH * scale) / 2;
-        baseContainerY = 0; // Zawsze góra
+        baseContainerY = 0; 
         if (baseContainerY < 0) baseContainerY = 0;
         rootContainer.x = baseContainerX; 
         rootContainer.y = baseContainerY;
@@ -378,7 +384,11 @@ async function init() {
             if (hintIndices.length > 0) hintPulseTimer += delta * 0.1;
             else hintPulseTimer = 0;
 
-            // --- AKTUALIZACJA STOPERA (timerValueText) ---
+            // Update UI status text
+            statusText.text = gameManager.gameStatusText;
+            if (gameManager.turnTimer < 5.0) statusText.style.fill = 0xFF0000;
+            else statusText.style.fill = 0xFFFFFF;
+
             if (AppConfig.limitMode === 'MOVES') {
                 timerLabel.text = 'MOVES';
                 timerValueText.text = `${AppConfig.limitValue - gameManager.globalMovesMade}`;
