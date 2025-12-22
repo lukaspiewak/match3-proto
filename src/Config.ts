@@ -48,16 +48,28 @@ export const ALL_AVAILABLE_COLORS = [
     0xFFA500  // Orange
 ];
 
-// --- IKONY DLA KOLORÓW (Symbole) ---
-// Muszą odpowiadać kolejnością kolorom powyżej
+// --- FALLBACK: IKONY TEKSTOWE ---
 export const BLOCK_ICONS = [
-    '♥', // Red (Serce)
-    '♣', // Green (Trefl/Koniczyna)
-    '♦', // Blue (Karo/Diament)
-    '$', // Yellow (Dolar - zgodnie z życzeniem)
-    '♠', // Purple (Pik)
-    '●', // Cyan (Koło)
-    '▲'  // Orange (Trójkąt)
+    '♥', // Red
+    '♣', // Green
+    '♦', // Blue
+    '$', // Yellow
+    '♠', // Purple
+    '●', // Cyan
+    '▲'  // Orange
+];
+
+// --- SCIEŻKI DO ASSETÓW SVG (Opcjonalne) ---
+// Jeśli plik pod tą ścieżką zostanie załadowany, użyjemy go zamiast ikony tekstowej.
+// Pliki powinny znajdować się w folderze /public/assets/
+export const BLOCK_ASSET_PATHS = [
+    '/assets/block_0.svg', // Red
+    '/assets/block_1.svg', // Green
+    '/assets/block_2.svg', // Blue
+    '/assets/block_3.svg', // Yellow
+    '/assets/block_4.svg', // Purple
+    '/assets/block_5.svg', // Cyan
+    '/assets/block_6.svg', // Orange
 ];
 
 // --- KONFIGURACJA RUNTIME ---

@@ -180,27 +180,9 @@ export class GameScene extends PIXI.Container implements Scene {
             g.fill(0xFFFFFF);
             g.pivot.set((TILE_SIZE - GAP) / 2, (TILE_SIZE - GAP) / 2);
             
-            // --- DODANIE IKONY ---
-            const icon = new PIXI.Text({
-                text: '', // Treść ustawiana dynamicznie w renderBoard
-                style: {
-                    fontFamily: 'Arial',
-                    fontSize: 32,
-                    fontWeight: 'bold',
-                    fill: 0x000000,
-                    align: 'center',
-                    alpha: 0.6 // Lekka przezroczystość dla stylu
-                }
-            });
-            icon.anchor.set(0.5);
-            // Wyśrodkowanie wewnątrz klocka
-            icon.x = (TILE_SIZE - GAP) / 2;
-            icon.y = (TILE_SIZE - GAP) / 2;
+            // Inicjalizacja stanu wizualnego (typ = -1 oznacza brak, zaktualizujemy w renderBoard)
+            (g as any).currentTypeId = -2; // Wymuszenie aktualizacji przy pierwszej klatce
             
-            // Przypinamy tekst do grafiki i zapisujemy referencję (brzydki hack 'any', ale skuteczny w prototypie)
-            g.addChild(icon);
-            (g as any).icon = icon;
-
             this.boardContainer.addChild(g);
             this.sprites.push(g);
         }
@@ -269,6 +251,63 @@ export class GameScene extends PIXI.Container implements Scene {
         }
     }
 
+    // --- NOWA METODA: HYBRYDOWE WYŚWIETLANIE ---
+    private updateBlockVisuals(container: PIXI.Graphics, typeId: number) {
+        // Jeśli typ się nie zmienił, nie rób nic (optymalizacja)
+        if ((container as any).currentTypeId === typeId) return;
+        (container as any).currentTypeId = typeId;
+
+        // Wyczyść stare dziecko (ikonę/tekst)
+        if ((container as any).iconChild) {
+            container.removeChild((container as any).iconChild);
+            (container as any).iconChild.destroy();
+            (container as any).iconChild = null;
+        }
+
+        if (typeId < 0) return; // Pusty klocek
+
+        const alias = `block_${typeId}`;
+        
+        // 1. Sprawdzamy czy mamy SVG w cache'u
+        if (PIXI.Assets.cache.has(alias)) {
+            const texture = PIXI.Assets.get(alias);
+            const sprite = new PIXI.Sprite(texture);
+            sprite.anchor.set(0.5);
+            sprite.x = (TILE_SIZE - GAP) / 2;
+            sprite.y = (TILE_SIZE - GAP) / 2;
+            
+            // Opcjonalne skalowanie (jeśli SVG jest za duże/małe)
+            // Zakładamy, że SVG są przygotowane pod rozmiar, ale dla pewności:
+            const scale = (TILE_SIZE - GAP) / Math.max(texture.width, texture.height);
+            sprite.scale.set(scale * 0.8); // 80% wypełnienia
+
+            // Ustawiamy jako ikonę
+            container.addChild(sprite);
+            (container as any).iconChild = sprite;
+        } 
+        // 2. Fallback: Używamy symbolu tekstowego
+        else {
+            const symbol = BLOCK_ICONS[typeId] || '?';
+            const text = new PIXI.Text({
+                text: symbol,
+                style: {
+                    fontFamily: 'Arial',
+                    fontSize: 32,
+                    fontWeight: 'bold',
+                    fill: 0x000000,
+                    align: 'center',
+                    alpha: 0.6
+                }
+            });
+            text.anchor.set(0.5);
+            text.x = (TILE_SIZE - GAP) / 2;
+            text.y = (TILE_SIZE - GAP) / 2;
+
+            container.addChild(text);
+            (container as any).iconChild = text;
+        }
+    }
+
     private renderBoard() {
         const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
         const selectedId = human ? human.getSelectedId() : -1;
@@ -311,10 +350,8 @@ export class GameScene extends PIXI.Container implements Scene {
             sprite.visible = true; sprite.alpha = alpha;
             sprite.tint = this.activeColors[cell.typeId];
             
-            // --- AKTUALIZACJA IKONY ---
-            if (cell.typeId >= 0 && cell.typeId < BLOCK_ICONS.length) {
-                sprite.icon.text = BLOCK_ICONS[cell.typeId];
-            }
+            // --- AKTUALIZACJA IKONY (SVG lub TEXT) ---
+            this.updateBlockVisuals(sprite, cell.typeId);
 
             sprite.x = drawX; sprite.y = drawY; sprite.scale.set(scale); sprite.zIndex = zIndex;
         }
