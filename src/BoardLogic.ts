@@ -48,7 +48,6 @@ export class BoardLogic {
     private lastMoveGroupSize: number = 0;
 
     constructor() {
-        // ZMIANA: Pobieramy grawitację z konfiguracji
         this.setGravity(AppConfig.gravityDir);
         
         this.stats = {
@@ -72,7 +71,7 @@ export class BoardLogic {
     }
 
     public initBoard() {
-        // ZMIANA: Upewniamy się, że grawitacja jest zaktualizowana przy restarcie
+        // Upewniamy się, że grawitacja jest zgodna z configiem
         this.setGravity(AppConfig.gravityDir);
 
         this.cells = [];
@@ -383,77 +382,6 @@ export class BoardLogic {
         let countV = 1; i=1; while(row-i>=0 && this.cells[idx-i*COLS].typeId===type && this.cells[idx-i*COLS].state===CellState.IDLE) { countV++; i++; }
         i=1; while(row+i<ROWS && this.cells[idx+i*COLS].typeId===type && this.cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
         if (countV>=3) return true; return false;
-    }
-
-    private getMatchSizeAt(idx: number): number {
-        const cell = this.cells[idx]; 
-        const type = cell.typeId; 
-        if (type === -1) return 0;
-        
-        const col = idx % COLS; 
-        const row = Math.floor(idx / COLS);
-        
-        let countH = 1, i = 1; 
-        while (col-i>=0 && this.cells[idx-i].typeId===type && this.cells[idx-i].state===CellState.IDLE) { countH++; i++; }
-        i=1; 
-        while(col+i<COLS && this.cells[idx+i].typeId===type && this.cells[idx+i].state===CellState.IDLE) { countH++; i++; }
-        
-        let countV = 1; i=1; 
-        while(row-i>=0 && this.cells[idx-i*COLS].typeId===type && this.cells[idx-i*COLS].state===CellState.IDLE) { countV++; i++; }
-        i=1; 
-        while(row+i<ROWS && this.cells[idx+i*COLS].typeId===type && this.cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
-
-        return Math.max(countH, countV);
-    }
-
-    public getBestMove(): { idxA: number, dirX: number, dirY: number } | null {
-        if (!this.cells.every(c => c.state === CellState.IDLE)) return null;
-        
-        let bestMove = null;
-        let bestScore = -Infinity;
-
-        for (let idx = 0; idx < this.cells.length; idx++) {
-            const cell = this.cells[idx]; 
-            if (cell.typeId === -1) continue;
-            
-            const col = idx % COLS; const row = Math.floor(idx / COLS);
-
-            const moves = [];
-            if (col < COLS - 1) moves.push({ target: idx + 1, dirX: 1, dirY: 0 }); 
-            if (row < ROWS - 1) moves.push({ target: idx + COLS, dirX: 0, dirY: 1 }); 
-
-            for (const m of moves) {
-                const otherIdx = m.target;
-                if (this.cells[otherIdx].typeId === -1) continue;
-
-                const t1 = this.cells[idx].typeId;
-                const t2 = this.cells[otherIdx].typeId;
-                this.cells[idx].typeId = t2;
-                this.cells[otherIdx].typeId = t1;
-
-                const sizeA = this.getMatchSizeAt(idx);
-                const sizeB = this.getMatchSizeAt(otherIdx);
-                const maxSize = Math.max(sizeA, sizeB);
-
-                if (maxSize >= 3) {
-                    let score = 0;
-                    if (maxSize === 3) score += 10;
-                    else if (maxSize === 4) score += 50; 
-                    else if (maxSize >= 5) score += 100; 
-                    score += row; 
-                    score += Random.next() * 5;
-
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestMove = { idxA: idx, dirX: m.dirX, dirY: m.dirY };
-                    }
-                }
-
-                this.cells[idx].typeId = t1;
-                this.cells[otherIdx].typeId = t2;
-            }
-        }
-        return bestMove;
     }
 
     public findHint(): number[] | null {
