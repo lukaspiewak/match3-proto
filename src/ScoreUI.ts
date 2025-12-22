@@ -7,7 +7,8 @@ export class ScoreUI {
     private flashes: PIXI.Graphics[] = []; 
     private labels: PIXI.Text[] = [];      
     
-    private values: number[] = [0, 0, 0, 0, 0];
+    // ZMIANA: Nie inicjalizujemy tutaj na sztywno, tylko dynamicznie w konstruktorze
+    private values: number[] = [];
     private maxScore: number;
     
     // --- JESZCZE MNIEJSZE WYMIARY ---
@@ -20,13 +21,15 @@ export class ScoreUI {
         this.container = new PIXI.Container();
         this.container.y = yPosition;
 
+        // ZMIANA: Inicjalizacja tablicy wartości zerami dla tylu kolorów, ile otrzymaliśmy
+        this.values = new Array(colors.length).fill(0);
+
         // Tło panelu - OSTRE KRAWĘDZIE (rect)
         const totalWidth = (colors.length * this.barWidth) + ((colors.length - 1) * this.spacing);
         const paddingX = 8;
         const paddingY = 8;
         
         const bgPanel = new PIXI.Graphics();
-        // ZMIANA: rect zamiast roundRect (ostre krawędzie)
         bgPanel.rect(-paddingX, -paddingY, totalWidth + (paddingX * 2), this.barHeight + 20);
         bgPanel.fill({ color: 0x000000, alpha: 0.6 });
         bgPanel.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.3 });
@@ -41,7 +44,6 @@ export class ScoreUI {
             const bg = new PIXI.Graphics();
             bg.rect(0, 0, this.barWidth, this.barHeight);
             bg.fill({ color: 0x333333, alpha: 1.0 }); 
-            // Usunięto obwódkę paska dla czystszego wyglądu przy małych rozmiarach
             barContainer.addChild(bg);
 
             // 2. Wypełnienie
@@ -83,13 +85,14 @@ export class ScoreUI {
             this.labels.push(label);
         });
         
-        // Pivot ustawiamy na lewą górną krawędź panelu (plus padding), 
-        // żeby łatwo pozycjonować go od lewej krawędzi ekranu
         this.container.pivot.x = -paddingX;
         this.container.pivot.y = -paddingY;
     }
 
     public addScore(colorId: number) {
+        // Zabezpieczenie na wypadek błędu indeksowania (choć po poprawce nie powinno wystąpić)
+        if (this.values[colorId] === undefined) return;
+
         if (this.values[colorId] < this.maxScore) {
             this.values[colorId]++;
             const targetScale = this.values[colorId] / this.maxScore;
@@ -112,7 +115,9 @@ export class ScoreUI {
 
     public reset(newMaxScore: number) {
         this.maxScore = newMaxScore;
-        this.values = [0, 0, 0, 0, 0];
+        // ZMIANA: Resetujemy tablicę zachowując odpowiednią długość (zgodną z liczbą pasków)
+        this.values = new Array(this.bars.length).fill(0);
+        
         for (let i = 0; i < this.bars.length; i++) {
             this.bars[i].scale.y = 0;
             this.flashes[i].scale.y = 0;

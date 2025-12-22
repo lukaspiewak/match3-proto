@@ -30,7 +30,7 @@ export interface Cell {
     timer: number;
 }
 
-// Stałe systemowe (niezmienne)
+// Stałe systemowe
 export const TURN_TIME_LIMIT = 15.0; 
 export const PLAYER_ID_NONE = -1;
 export const PLAYER_ID_1 = 0; 
@@ -38,12 +38,24 @@ export const PLAYER_ID_2 = 1;
 export const COMBO_BONUS_SECONDS = 1.0; 
 export const CURRENT_GRAVITY: GravityDir = 'DOWN'; 
 
-// --- KONFIGURACJA RUNTIME (Zmienna) ---
-// To jest obiekt, który będziemy modyfikować w Opcjach
+// --- PALETA KOLORÓW (Max 7) ---
+export const ALL_AVAILABLE_COLORS = [
+    0xFF0000, // Red
+    0x00FF00, // Green
+    0x0000FF, // Blue
+    0xFFFF00, // Yellow
+    0xFF00FF, // Purple
+    0x00FFFF, // Cyan
+    0xFFA500  // Orange
+];
+
+// --- KONFIGURACJA RUNTIME ---
 export const AppConfig = {
     gameMode: 'SOLO' as GameMode,
     limitMode: 'MOVES' as LimitMode,
     limitValue: 20 as number,
     comboMode: 'TIME' as ComboMode,
-    seed: 12345 as number
+    seed: 12345 as number,
+    blockTypes: 5 as number,
+    gravityDir: 'DOWN' as GravityDir // Nowa opcja
 };

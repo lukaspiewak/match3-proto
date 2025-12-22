@@ -5,7 +5,7 @@ import { ScoreUI } from './ScoreUI';
 import { SoundManager } from './SoundManager';
 import { 
     COLS, ROWS, TILE_SIZE, GAP, CellState, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig 
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig, ALL_AVAILABLE_COLORS, type GravityDir 
 } from './Config';
 import { Random } from './Random';
 import { GameManager } from './GameManager';
@@ -28,10 +28,14 @@ let logic: BoardLogic;
 let soundManager: SoundManager;
 let particles: ParticleSystem;
 let scoreUI: ScoreUI;
+let botScoreUI: ScoreUI; 
 let humanPlayer: HumanPlayerController;
 
 // Elementy UI do aktualizacji
 let timerValueText: PIXI.Text;
+
+// Zmienna przechowująca aktualnie wybraną paletę
+let activeColors: number[] = [];
 
 async function init() {
     Random.setSeed(AppConfig.seed);
@@ -123,7 +127,14 @@ async function init() {
     // @ts-ignore
     gameSceneContainer.addChild(scoreUI.container); 
 
-    // 2. ŚRODEK: Okrągły Stoper (Globalny Limit)
+    // 1b. PRAWA: Panel Punktów Bota
+    botScoreUI = new ScoreUI(colors, 0, 100);
+    botScoreUI.container.x = GAME_LOGICAL_WIDTH - MARGIN - 110; 
+    botScoreUI.container.y = 20;
+    // @ts-ignore
+    gameSceneContainer.addChild(botScoreUI.container);
+
+    // 2. ŚRODEK: Okrągły Stoper
     const timerContainer = new PIXI.Container();
     timerContainer.x = GAME_LOGICAL_WIDTH / 2;
     timerContainer.y = 45; 
@@ -156,18 +167,17 @@ async function init() {
         switchState('MENU');
     });
     menuBtn.x = GAME_LOGICAL_WIDTH - MARGIN - 25; 
-    menuBtn.y = 45; 
+    menuBtn.y = 120; 
     gameSceneContainer.addChild(menuBtn);
 
-    // 4. POPRAWKA: Czas Tury / Status (statusText)
-    // Umieszczamy go po LEWEJ stronie przycisku MENU, aby nie był zasłonięty
+    // 4. Czas Tury / Status
     const statusText = new PIXI.Text({
         text: 'Init...',
         style: { fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', fill: 0xFFFFFF, align: 'right', stroke: { color: 0x000000, width: 3 } }
     });
-    statusText.anchor.set(1, 0.5); // Anchor na prawy środek
-    statusText.x = menuBtn.x - 35; // Odsuwamy w lewo od przycisku menu
-    statusText.y = menuBtn.y;      // Ta sama wysokość co środek przycisku
+    statusText.anchor.set(1, 0.5); 
+    statusText.x = menuBtn.x - 35; 
+    statusText.y = menuBtn.y;      
     gameSceneContainer.addChild(statusText);
 
     // --- BUDOWA MENU (menuContainer) ---
@@ -234,8 +244,17 @@ async function init() {
         refreshOptionsUI();
     });
 
-    const btnOptCombo = createOptionToggle("", () => {
-        AppConfig.comboMode = AppConfig.comboMode === 'TIME' ? 'MOVE' : 'TIME';
+    const btnOptColors = createOptionToggle("", () => {
+        AppConfig.blockTypes++;
+        if (AppConfig.blockTypes > 7) AppConfig.blockTypes = 4;
+        refreshOptionsUI();
+    });
+
+    // NOWOŚĆ: Przycisk Grawitacji
+    const btnOptGravity = createOptionToggle("", () => {
+        const dirs: GravityDir[] = ['DOWN', 'UP', 'LEFT', 'RIGHT'];
+        const idx = dirs.indexOf(AppConfig.gravityDir);
+        AppConfig.gravityDir = dirs[(idx + 1) % dirs.length];
         refreshOptionsUI();
     });
 
@@ -252,16 +271,36 @@ async function init() {
     function refreshOptionsUI() {
         (btnOptLimit.children[1] as PIXI.Text).text = `LIMIT: ${AppConfig.limitMode}`;
         (btnOptVal.children[1] as PIXI.Text).text = `VALUE: ${AppConfig.limitValue}`;
-        (btnOptCombo.children[1] as PIXI.Text).text = `COMBO: ${AppConfig.comboMode}`;
+        (btnOptColors.children[1] as PIXI.Text).text = `COLORS: ${AppConfig.blockTypes}`;
+        (btnOptGravity.children[1] as PIXI.Text).text = `GRAVITY: ${AppConfig.gravityDir}`; // Aktualizacja tekstu grawitacji
         (btnOptSeed.children[1] as PIXI.Text).text = `SEED: ${AppConfig.seed}`;
     }
 
     function startGame() {
         switchState('GAME');
         Random.setSeed(AppConfig.seed);
-        scoreUI.reset(100); 
-        gameManager.clearPlayers();
+        
+        // Wybieramy kolory
+        activeColors = ALL_AVAILABLE_COLORS.slice(0, AppConfig.blockTypes);
 
+        if (scoreUI) gameSceneContainer.removeChild(scoreUI.container);
+        if (botScoreUI) gameSceneContainer.removeChild(botScoreUI.container);
+
+        scoreUI = new ScoreUI(activeColors, 0, 100);
+        scoreUI.container.x = MARGIN; 
+        scoreUI.container.y = 20; 
+        // @ts-ignore
+        gameSceneContainer.addChild(scoreUI.container);
+
+        botScoreUI = new ScoreUI(activeColors, 0, 100);
+        botScoreUI.container.x = GAME_LOGICAL_WIDTH - MARGIN - 110; 
+        botScoreUI.container.y = 20;
+        // @ts-ignore
+        gameSceneContainer.addChild(botScoreUI.container);
+
+        botScoreUI.container.visible = (AppConfig.gameMode === 'VS_AI');
+
+        gameManager.clearPlayers();
         humanPlayer = new HumanPlayerController(PLAYER_ID_1, gameManager, logic, boardContainer, soundManager);
         gameManager.registerPlayer(humanPlayer);
 
@@ -278,7 +317,7 @@ async function init() {
         const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
         const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
         const globalPos = boardContainer.toGlobal({x: drawX, y: drawY});
-        particles.spawn(globalPos.x, globalPos.y, colors[type]);
+        particles.spawn(globalPos.x, globalPos.y, activeColors[type]);
         soundManager.playPop();
         idleTime = 0; hintIndices = [];
     };
@@ -358,7 +397,9 @@ async function init() {
             gameManager.update(delta);
             logic.update(delta);
             particles.update(delta);
-            scoreUI.update(delta);
+            
+            if (scoreUI) scoreUI.update(delta);
+            if (botScoreUI && botScoreUI.container.visible) botScoreUI.update(delta);
             
             if (logic.cells.every(c => c.state === CellState.IDLE) && !gameManager.isGameOver) {
                 idleTime += delta / 60.0; 
@@ -384,7 +425,6 @@ async function init() {
             if (hintIndices.length > 0) hintPulseTimer += delta * 0.1;
             else hintPulseTimer = 0;
 
-            // Update UI status text
             statusText.text = gameManager.gameStatusText;
             if (gameManager.turnTimer < 5.0) statusText.style.fill = 0xFF0000;
             else statusText.style.fill = 0xFFFFFF;
@@ -416,8 +456,17 @@ async function init() {
                 if (cell.state === CellState.EXPLODING) {
                     if (!sprite.processed) {
                         const globalPos = boardContainer.toGlobal({x: drawX, y: drawY});
-                        particles.spawn(globalPos.x, globalPos.y, colors[cell.typeId]);
-                        scoreUI.addScore(cell.typeId);
+                        particles.spawn(globalPos.x, globalPos.y, activeColors[cell.typeId]);
+                        
+                        const currentId = gameManager.getCurrentPlayerId();
+                        if (currentId === PLAYER_ID_1) {
+                            scoreUI.addScore(cell.typeId);
+                        } else if (currentId === PLAYER_ID_2) {
+                            botScoreUI.addScore(cell.typeId);
+                        } else {
+                            scoreUI.addScore(cell.typeId);
+                        }
+
                         soundManager.playPop();
                         shakeIntensity = 0.8; 
                         sprite.processed = true;
@@ -436,7 +485,8 @@ async function init() {
                     alpha = 0.75 + Math.sin(hintPulseTimer) * 0.25;
                 }
 
-                sprite.visible = true; sprite.alpha = alpha; sprite.tint = colors[cell.typeId];
+                sprite.visible = true; sprite.alpha = alpha;
+                sprite.tint = activeColors[cell.typeId];
                 sprite.x = drawX; sprite.y = drawY; sprite.scale.set(scale); sprite.zIndex = zIndex;
             }
             boardContainer.sortableChildren = true; 

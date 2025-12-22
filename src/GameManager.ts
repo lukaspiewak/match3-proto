@@ -34,6 +34,12 @@ export class GameManager {
         this.players = [];
     }
 
+    // Nowa metoda pomocnicza do sprawdzania czyja jest tura (lub czyja "trwa" podczas animacji)
+    public getCurrentPlayerId(): number {
+        if (!this.players[this.currentPlayerIndex]) return -1;
+        return this.players[this.currentPlayerIndex].id;
+    }
+
     public startGame() {
         this.currentPlayerIndex = 0;
         this.turnTimer = TURN_TIME_LIMIT;

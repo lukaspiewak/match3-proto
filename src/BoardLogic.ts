@@ -1,6 +1,6 @@
 import { 
     COLS, ROWS, BLOCK_TYPES, CellState, type Cell, 
-    CURRENT_GRAVITY, type GravityDir, 
+    type GravityDir, 
     COMBO_BONUS_SECONDS, AppConfig 
 } from './Config';
 import { Random } from './Random';
@@ -48,14 +48,15 @@ export class BoardLogic {
     private lastMoveGroupSize: number = 0;
 
     constructor() {
-        this.setGravity(CURRENT_GRAVITY);
+        // ZMIANA: Pobieramy grawitację z konfiguracji
+        this.setGravity(AppConfig.gravityDir);
         
         this.stats = {
             totalMoves: 0, invalidMoves: 0, totalThinkingTime: 0,
             highestCascade: 0, matchCounts: { 3: 0, 4: 0, 5: 0 }, 
             colorClears: {}
         };
-        for(let i=0; i<BLOCK_TYPES; i++) this.stats.colorClears[i] = 0;
+        for(let i=0; i < AppConfig.blockTypes; i++) this.stats.colorClears[i] = 0;
 
         this.cells = [];
         this.initBoard();
@@ -71,6 +72,9 @@ export class BoardLogic {
     }
 
     public initBoard() {
+        // ZMIANA: Upewniamy się, że grawitacja jest zaktualizowana przy restarcie
+        this.setGravity(AppConfig.gravityDir);
+
         this.cells = [];
         this.currentCombo = 0;
         this.bestCombo = 0;
@@ -84,8 +88,9 @@ export class BoardLogic {
             let forbiddenH = -1; let forbiddenV = -1;
             if (col >= 2) { if (this.cells[i-1].typeId === this.cells[i-2].typeId) forbiddenH = this.cells[i-1].typeId; }
             if (row >= 2) { if (this.cells[i-COLS].typeId === this.cells[i-(COLS*2)].typeId) forbiddenV = this.cells[i-COLS].typeId; }
+            
             let chosenType;
-            do { chosenType = Random.nextInt(BLOCK_TYPES); } while (chosenType === forbiddenH || chosenType === forbiddenV);
+            do { chosenType = Random.nextInt(AppConfig.blockTypes); } while (chosenType === forbiddenH || chosenType === forbiddenV);
 
             const startX = col - (this.dirX * COLS);
             const startY = row - (this.dirY * ROWS);
@@ -100,14 +105,8 @@ export class BoardLogic {
     public update(delta: number) {
         const dt = delta / 60.0;
 
-        // --- ZMIENIONA LOGIKA COMBO ---
         if (AppConfig.comboMode === 'TIME' && this.currentCombo > 0) {
-            // Sprawdzamy czy coś się dzieje na planszy (animacje)
             const isBoardBusy = !this.cells.every(c => c.state === CellState.IDLE);
-            
-            // Pauzujemy licznik TYLKO JEŚLI:
-            // 1. Nie gramy w trybie SOLO (czyli gramy w trybie turowym VS, gdzie ruch jest zablokowany)
-            // 2. Plansza wykonuje animacje (jest zajęta)
             const shouldPause = (AppConfig.gameMode !== 'SOLO' && isBoardBusy);
 
             if (!shouldPause) {
@@ -144,7 +143,6 @@ export class BoardLogic {
         const idxB = targetCol + targetRow * COLS;
         const cellA = this.cells[idxA]; const cellB = this.cells[idxB];
         
-        // Zabezpieczenie fizyki (nie można ruszyć spadającego klocka)
         if (cellA.state !== CellState.IDLE || cellB.state !== CellState.IDLE) return result;
         
         if (this.statsEnabled) {
@@ -228,7 +226,7 @@ export class BoardLogic {
                 const finalRow = isVertical ? logicalS : p;
                 const idx = finalCol + finalRow * COLS;
                 const cell = this.cells[idx];
-                cell.typeId = Random.nextInt(BLOCK_TYPES);
+                cell.typeId = Random.nextInt(AppConfig.blockTypes);
                 cell.state = CellState.FALLING;
                 cell.targetX = finalCol;
                 cell.targetY = finalRow;
@@ -386,6 +384,78 @@ export class BoardLogic {
         i=1; while(row+i<ROWS && this.cells[idx+i*COLS].typeId===type && this.cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
         if (countV>=3) return true; return false;
     }
+
+    private getMatchSizeAt(idx: number): number {
+        const cell = this.cells[idx]; 
+        const type = cell.typeId; 
+        if (type === -1) return 0;
+        
+        const col = idx % COLS; 
+        const row = Math.floor(idx / COLS);
+        
+        let countH = 1, i = 1; 
+        while (col-i>=0 && this.cells[idx-i].typeId===type && this.cells[idx-i].state===CellState.IDLE) { countH++; i++; }
+        i=1; 
+        while(col+i<COLS && this.cells[idx+i].typeId===type && this.cells[idx+i].state===CellState.IDLE) { countH++; i++; }
+        
+        let countV = 1; i=1; 
+        while(row-i>=0 && this.cells[idx-i*COLS].typeId===type && this.cells[idx-i*COLS].state===CellState.IDLE) { countV++; i++; }
+        i=1; 
+        while(row+i<ROWS && this.cells[idx+i*COLS].typeId===type && this.cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
+
+        return Math.max(countH, countV);
+    }
+
+    public getBestMove(): { idxA: number, dirX: number, dirY: number } | null {
+        if (!this.cells.every(c => c.state === CellState.IDLE)) return null;
+        
+        let bestMove = null;
+        let bestScore = -Infinity;
+
+        for (let idx = 0; idx < this.cells.length; idx++) {
+            const cell = this.cells[idx]; 
+            if (cell.typeId === -1) continue;
+            
+            const col = idx % COLS; const row = Math.floor(idx / COLS);
+
+            const moves = [];
+            if (col < COLS - 1) moves.push({ target: idx + 1, dirX: 1, dirY: 0 }); 
+            if (row < ROWS - 1) moves.push({ target: idx + COLS, dirX: 0, dirY: 1 }); 
+
+            for (const m of moves) {
+                const otherIdx = m.target;
+                if (this.cells[otherIdx].typeId === -1) continue;
+
+                const t1 = this.cells[idx].typeId;
+                const t2 = this.cells[otherIdx].typeId;
+                this.cells[idx].typeId = t2;
+                this.cells[otherIdx].typeId = t1;
+
+                const sizeA = this.getMatchSizeAt(idx);
+                const sizeB = this.getMatchSizeAt(otherIdx);
+                const maxSize = Math.max(sizeA, sizeB);
+
+                if (maxSize >= 3) {
+                    let score = 0;
+                    if (maxSize === 3) score += 10;
+                    else if (maxSize === 4) score += 50; 
+                    else if (maxSize >= 5) score += 100; 
+                    score += row; 
+                    score += Random.next() * 5;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMove = { idxA: idx, dirX: m.dirX, dirY: m.dirY };
+                    }
+                }
+
+                this.cells[idx].typeId = t1;
+                this.cells[otherIdx].typeId = t2;
+            }
+        }
+        return bestMove;
+    }
+
     public findHint(): number[] | null {
         if (!this.cells.every(c => c.state === CellState.IDLE)) return null;
         for (let idx = 0; idx < this.cells.length; idx++) {
@@ -403,7 +473,7 @@ export class BoardLogic {
     public findDeadlockFix(): { id: number, targetType: number } | null {
         for (let i = 0; i < this.cells.length; i++) {
             const o = this.cells[i].typeId; if (o === -1) continue;
-            for (let t = 0; t < BLOCK_TYPES; t++) {
+            for (let t = 0; t < AppConfig.blockTypes; t++) {
                 if (t === o) continue; this.cells[i].typeId = t;
                 if (this.findHint() !== null) { this.cells[i].typeId = o; return { id: i, targetType: t }; }
             } this.cells[i].typeId = o;

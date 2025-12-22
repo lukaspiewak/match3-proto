@@ -26,7 +26,6 @@ export class HumanPlayerController extends PlayerController {
     private boardContainer: PIXI.Container;
     private soundManager: SoundManager;
 
-    // Zmienne do obsługi Swipe/Drag
     private isDragging: boolean = false;
     private startX: number = 0;
     private startY: number = 0;
@@ -41,11 +40,9 @@ export class HumanPlayerController extends PlayerController {
 
     private setupInput() {
         this.boardContainer.eventMode = 'static';
-        // Nasłuchujemy pełnego cyklu zdarzeń dla obsługi Swipe
         this.boardContainer.on('pointerdown', (e) => this.onPointerDown(e));
         this.boardContainer.on('pointermove', (e) => this.onPointerMove(e));
         this.boardContainer.on('pointerup', (e) => this.onPointerUp(e));
-        // Resetowanie gestu przy wyjściu poza obszar
         this.boardContainer.on('pointerupoutside', () => this.cancelDrag());
     }
 
@@ -71,11 +68,9 @@ export class HumanPlayerController extends PlayerController {
             this.startY = e.global.y;
             this.startId = pos.id;
 
-            // Jeśli nic nie jest zaznaczone, zaznaczamy ten klocek wstępnie
             if (this.selectedId === -1) {
                 this.selectedId = pos.id;
             } else {
-                // Próba ruchu click-click
                 this.tryMoveTo(pos.id);
             }
         }
@@ -90,7 +85,6 @@ export class HumanPlayerController extends PlayerController {
         const THRESHOLD = TILE_SIZE * 0.5; 
 
         if (Math.abs(deltaX) > THRESHOLD || Math.abs(deltaY) > THRESHOLD) {
-            // Wykryto SWIPE!
             let dirX = 0;
             let dirY = 0;
 
@@ -102,16 +96,13 @@ export class HumanPlayerController extends PlayerController {
 
             this.manager.requestMove(this.id, this.startId, dirX, dirY);
             this.cancelDrag();
-            this.selectedId = -1; // Usuwamy zaznaczenie wizualne
+            this.selectedId = -1; 
         }
     }
 
     private onPointerUp(e: PIXI.FederatedPointerEvent) {
         if (this.isDragging) {
             const pos = this.getBoardPos(e);
-            
-            // Jeśli puszczamy na tym samym klocku co start, to jest to "wybór" (Click)
-            // Jeśli puszczamy na innym, to może być próba Drag&Drop
             if (pos && pos.id !== this.startId) {
                 this.tryMoveTo(pos.id);
             }
@@ -145,7 +136,6 @@ export class HumanPlayerController extends PlayerController {
         }
     }
 
-    // POPRAWKA: Zmiana nazwy argumentu na _delta, aby TypeScript ignorował brak użycia
     public update(_delta: number): void {}
 
     public onTurnStart(): void {
@@ -159,7 +149,7 @@ export class HumanPlayerController extends PlayerController {
     }
 }
 
-// Implementacja: BOT
+// Implementacja: SMART BOT
 export class BotPlayerController extends PlayerController {
     private thinkTimer: number = 0;
     private readonly THINK_DELAY = 1.0; 
@@ -178,17 +168,14 @@ export class BotPlayerController extends PlayerController {
     }
 
     private makeMove() {
-        const hint = this.logic.findHint();
-        if (hint) {
-            const idxA = hint[0];
-            const idxB = hint[1];
-            const colA = idxA % COLS; const rowA = Math.floor(idxA / COLS);
-            const colB = idxB % COLS; const rowB = Math.floor(idxB / COLS);
-            const dirX = colB - colA;
-            const dirY = rowB - rowA;
-            console.log("🤖 BOT: Found move!");
-            this.manager.requestMove(this.id, idxA, dirX, dirY);
+        // ZMIANA: Używamy inteligentnego skanowania planszy
+        const bestMove = this.logic.getBestMove();
+        
+        if (bestMove) {
+            console.log("🤖 BOT: Found BEST move!");
+            this.manager.requestMove(this.id, bestMove.idxA, bestMove.dirX, bestMove.dirY);
         } else {
+            // Fallback (teoretycznie niemożliwy dzięki Deadlock Fix, ale bezpieczny)
             console.log("🤖 BOT: No moves found");
         }
     }
