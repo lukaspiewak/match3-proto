@@ -9,7 +9,7 @@ import { HumanPlayerController, BotPlayerController } from '../PlayerController'
 import { Button } from '../ui/Button';
 import { 
     COLS, ROWS, TILE_SIZE, GAP, CellState, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig, ALL_AVAILABLE_COLORS 
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig, ALL_AVAILABLE_COLORS, BLOCK_ICONS 
 } from '../Config';
 import { Random } from '../Random';
 
@@ -41,7 +41,6 @@ export class GameScene extends PIXI.Container implements Scene {
 
     private backToMenuCallback: () => void;
 
-    // Stałe wymiary logiczne do skalowania
     private readonly GAME_LOGICAL_WIDTH = (COLS * TILE_SIZE) + 20;
     private readonly GAME_LOGICAL_HEIGHT = (ROWS * TILE_SIZE) + 150 + 20;
 
@@ -51,7 +50,7 @@ export class GameScene extends PIXI.Container implements Scene {
         this.backToMenuCallback = backToMenuCallback;
 
         this.soundManager = new SoundManager();
-        this.particles = new ParticleSystem(app); // Particles muszą być na stage globalnie lub tutaj
+        this.particles = new ParticleSystem(app); 
         
         this.logic = new BoardLogic();
         this.logic.onBadMove = () => { 
@@ -61,18 +60,15 @@ export class GameScene extends PIXI.Container implements Scene {
 
         this.gameManager = new GameManager(this.logic);
         
-        // Inicjalizacja kontenerów
         this.bgContainer = new PIXI.Container();
         this.boardContainer = new PIXI.Container();
         
         this.addChild(this.bgContainer);
-        this.addChild(this.boardContainer); // Plansza
+        this.addChild(this.boardContainer); 
         
-        // Setup stałych elementów UI (tła planszy, maski)
         this.setupBoardBackground();
         this.setupUI();
         
-        // Callbacks
         this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
         this.gameManager.onGameFinished = (reason) => this.onGameFinished(reason);
     }
@@ -102,7 +98,6 @@ export class GameScene extends PIXI.Container implements Scene {
     private setupUI() {
         const UI_CENTER_X = this.GAME_LOGICAL_WIDTH / 2;
 
-        // 1. Stoper
         const timerContainer = new PIXI.Container();
         timerContainer.x = UI_CENTER_X;
         timerContainer.y = 45; 
@@ -129,7 +124,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.timerLabel.y = 20; 
         timerContainer.addChild(this.timerLabel);
 
-        // 2. Menu Button
         const menuBtn = new Button("☰", 50, 50, 0x444444, () => {
             this.gameManager.resetGame();
             this.backToMenuCallback();
@@ -138,7 +132,6 @@ export class GameScene extends PIXI.Container implements Scene {
         menuBtn.y = 45; 
         this.addChild(menuBtn);
 
-        // 3. Status Text
         this.statusText = new PIXI.Text({
             text: '',
             style: { fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', fill: 0xFFFFFF, align: 'right', stroke: { color: 0x000000, width: 3 } }
@@ -150,14 +143,11 @@ export class GameScene extends PIXI.Container implements Scene {
     }
 
     public onShow() {
-        // Reset Logic & Manager
         Random.setSeed(AppConfig.seed);
         this.gameManager.clearPlayers();
         
-        // Kolory
         this.activeColors = ALL_AVAILABLE_COLORS.slice(0, AppConfig.blockTypes);
 
-        // Rebuild Score UI
         if (this.scoreUI) this.removeChild(this.scoreUI.container);
         if (this.botScoreUI) this.removeChild(this.botScoreUI.container);
 
@@ -172,7 +162,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.botScoreUI.container.visible = (AppConfig.gameMode === 'VS_AI');
         this.addChild(this.botScoreUI.container);
 
-        // Players
         const human = new HumanPlayerController(PLAYER_ID_1, this.gameManager, this.logic, this.boardContainer, this.soundManager);
         this.gameManager.registerPlayer(human);
 
@@ -181,16 +170,37 @@ export class GameScene extends PIXI.Container implements Scene {
             this.gameManager.registerPlayer(bot);
         }
 
-        // Rebuild Sprites
         this.sprites.forEach(s => s.destroy());
         this.sprites = [];
-        this.logic.initBoard(); // Ensure logic has cells
+        this.logic.initBoard(); 
         
         for(let i=0; i<this.logic.cells.length; i++) {
             const g = new PIXI.Graphics();
             g.rect(0, 0, TILE_SIZE - GAP, TILE_SIZE - GAP);
             g.fill(0xFFFFFF);
             g.pivot.set((TILE_SIZE - GAP) / 2, (TILE_SIZE - GAP) / 2);
+            
+            // --- DODANIE IKONY ---
+            const icon = new PIXI.Text({
+                text: '', // Treść ustawiana dynamicznie w renderBoard
+                style: {
+                    fontFamily: 'Arial',
+                    fontSize: 32,
+                    fontWeight: 'bold',
+                    fill: 0x000000,
+                    align: 'center',
+                    alpha: 0.6 // Lekka przezroczystość dla stylu
+                }
+            });
+            icon.anchor.set(0.5);
+            // Wyśrodkowanie wewnątrz klocka
+            icon.x = (TILE_SIZE - GAP) / 2;
+            icon.y = (TILE_SIZE - GAP) / 2;
+            
+            // Przypinamy tekst do grafiki i zapisujemy referencję (brzydki hack 'any', ale skuteczny w prototypie)
+            g.addChild(icon);
+            (g as any).icon = icon;
+
             this.boardContainer.addChild(g);
             this.sprites.push(g);
         }
@@ -260,7 +270,7 @@ export class GameScene extends PIXI.Container implements Scene {
     }
 
     private renderBoard() {
-        const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; // Hack for getting controller
+        const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
         const selectedId = human ? human.getSelectedId() : -1;
 
         for(let i=0; i<this.logic.cells.length; i++) {
@@ -282,11 +292,10 @@ export class GameScene extends PIXI.Container implements Scene {
                     else this.scoreUI.addScore(cell.typeId);
 
                     this.soundManager.playPop();
-                    // Shake effect could be handled by container position
                     sprite.processed = true;
                 }
                 sprite.visible = true; sprite.x = drawX; sprite.y = drawY;
-                const progress = Math.max(0, cell.timer / 15.0); // 15.0 = MAX_EXPLOSION_TIME
+                const progress = Math.max(0, cell.timer / 15.0); 
                 sprite.scale.set(progress); sprite.tint = 0xFFFFFF; sprite.alpha = progress; 
                 continue;
             } else { sprite.processed = false; }
@@ -301,6 +310,12 @@ export class GameScene extends PIXI.Container implements Scene {
 
             sprite.visible = true; sprite.alpha = alpha;
             sprite.tint = this.activeColors[cell.typeId];
+            
+            // --- AKTUALIZACJA IKONY ---
+            if (cell.typeId >= 0 && cell.typeId < BLOCK_ICONS.length) {
+                sprite.icon.text = BLOCK_ICONS[cell.typeId];
+            }
+
             sprite.x = drawX; sprite.y = drawY; sprite.scale.set(scale); sprite.zIndex = zIndex;
         }
         this.boardContainer.sortableChildren = true;

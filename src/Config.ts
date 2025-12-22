@@ -1,6 +1,5 @@
 export const COLS = 7;
 export const ROWS = 9;
-export const BLOCK_TYPES = 5;
 export const TILE_SIZE = 60;
 export const GAP = 4;
 
@@ -49,6 +48,18 @@ export const ALL_AVAILABLE_COLORS = [
     0xFFA500  // Orange
 ];
 
+// --- IKONY DLA KOLORÓW (Symbole) ---
+// Muszą odpowiadać kolejnością kolorom powyżej
+export const BLOCK_ICONS = [
+    '♥', // Red (Serce)
+    '♣', // Green (Trefl/Koniczyna)
+    '♦', // Blue (Karo/Diament)
+    '$', // Yellow (Dolar - zgodnie z życzeniem)
+    '♠', // Purple (Pik)
+    '●', // Cyan (Koło)
+    '▲'  // Orange (Trójkąt)
+];
+
 // --- KONFIGURACJA RUNTIME ---
 export const AppConfig = {
     gameMode: 'SOLO' as GameMode,
@@ -57,5 +68,5 @@ export const AppConfig = {
     comboMode: 'TIME' as ComboMode,
     seed: 12345 as number,
     blockTypes: 5 as number,
-    gravityDir: 'DOWN' as GravityDir // Nowa opcja
+    gravityDir: 'DOWN' as GravityDir
 };

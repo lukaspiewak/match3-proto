@@ -1,5 +1,5 @@
 import { 
-    COLS, ROWS, BLOCK_TYPES, CellState, type Cell, 
+    COLS, ROWS, type BLOCK_TYPES, CellState, type Cell, 
     type GravityDir, 
     COMBO_BONUS_SECONDS, AppConfig 
 } from './Config';
