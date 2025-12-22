@@ -1,9 +1,10 @@
 import { 
-    COLS, ROWS, type BLOCK_TYPES, CellState, type Cell, 
+    COLS, ROWS, CellState, type Cell, 
     type GravityDir, 
     COMBO_BONUS_SECONDS, AppConfig 
 } from './Config';
 import { Random } from './Random';
+import { BlockRegistry } from './BlockDef';
 
 export interface MoveResult {
     success: boolean;       
@@ -35,12 +36,10 @@ export class BoardLogic {
 
     public onBadMove: (() => void) | null = null;
     
-    // Combo
     public currentCombo: number = 0;
     public bestCombo: number = 0;       
     public comboTimer: number = 0;      
 
-    // Telemetria
     public stats: GameStats;
     private currentCascadeDepth: number = 0;
     private currentThinkingTime: number = 0; 
@@ -71,7 +70,6 @@ export class BoardLogic {
     }
 
     public initBoard() {
-        // Upewniamy się, że grawitacja jest zgodna z configiem
         this.setGravity(AppConfig.gravityDir);
 
         this.cells = [];
@@ -89,7 +87,8 @@ export class BoardLogic {
             if (row >= 2) { if (this.cells[i-COLS].typeId === this.cells[i-(COLS*2)].typeId) forbiddenV = this.cells[i-COLS].typeId; }
             
             let chosenType;
-            do { chosenType = Random.nextInt(AppConfig.blockTypes); } while (chosenType === forbiddenH || chosenType === forbiddenV);
+            do { chosenType = BlockRegistry.getRandomBlockId(AppConfig.blockTypes); } 
+            while (chosenType === forbiddenH || chosenType === forbiddenV);
 
             const startX = col - (this.dirX * COLS);
             const startY = row - (this.dirY * ROWS);
@@ -225,7 +224,8 @@ export class BoardLogic {
                 const finalRow = isVertical ? logicalS : p;
                 const idx = finalCol + finalRow * COLS;
                 const cell = this.cells[idx];
-                cell.typeId = Random.nextInt(AppConfig.blockTypes);
+                // Użycie rejestru bloków do losowania
+                cell.typeId = BlockRegistry.getRandomBlockId(AppConfig.blockTypes);
                 cell.state = CellState.FALLING;
                 cell.targetX = finalCol;
                 cell.targetY = finalRow;
@@ -315,6 +315,7 @@ export class BoardLogic {
             this.analyzeMatchStats(matchedIndices);
 
             this.currentCombo++;
+            // TUTAJ BYŁ BŁĄD - Teraz COMBO_BONUS_SECONDS jest poprawnie zaimportowane
             if (AppConfig.comboMode === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
             
             matchedIndices.forEach(idx => {
