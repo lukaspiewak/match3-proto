@@ -7,7 +7,7 @@ import { ParticleSystem } from '../ParticleSystem';
 import { ScoreUI } from '../ScoreUI';
 import { HumanPlayerController, BotPlayerController } from '../PlayerController';
 import { Button } from '../ui/Button';
-import { BlockView } from '../views/BlockView'; // Importujemy naszą nową klasę
+import { BlockView } from '../views/BlockView'; 
 import { 
     COLS, ROWS, TILE_SIZE, GAP, CellState, 
     PLAYER_ID_1, PLAYER_ID_2, AppConfig 
@@ -33,12 +33,17 @@ export class GameScene extends PIXI.Container implements Scene {
     private bgContainer: PIXI.Container;
     private boardContainer: PIXI.Container;
     
-    // ZMIANA: Tablica przechowuje teraz BlockView!
+    // Sprites
     private sprites: BlockView[] = [];
     
     private idleTime = 0;
     private hintIndices: number[] = [];
     private hintPulseTimer = 0;
+
+    // --- SCREEN SHAKE & FX ---
+    private shakeTimer = 0;
+    private shakeIntensity = 0;
+    private baseBoardY = 0; // Zapamiętana pozycja Y planszy
 
     private backToMenuCallback: () => void;
 
@@ -56,7 +61,11 @@ export class GameScene extends PIXI.Container implements Scene {
         this.logic = new BoardLogic();
         this.logic.onBadMove = () => { 
             this.soundManager.playBadMove(); 
+            // Haptyka dla złego ruchu
             if (navigator.vibrate) navigator.vibrate(50); 
+            
+            // Mały wstrząs przy błędzie
+            this.triggerShake(0.2, 3);
         };
 
         this.gameManager = new GameManager(this.logic);
@@ -148,18 +157,24 @@ export class GameScene extends PIXI.Container implements Scene {
         this.gameManager.clearPlayers();
         
         const activeBlocks = BlockRegistry.getAll().slice(0, AppConfig.blockTypes);
-        const activeColors = activeBlocks.map(b => b.color);
+        // Pobieramy same ID dla ScoreUI
+        const activeBlockIds = activeBlocks.map(b => b.id);
+        const activeColors = activeBlocks.map(b => b.color); // Cache dla cząsteczek
+
+        // Aktualizujemy lokalny cache kolorów (jeśli używany gdzieś indziej)
+        this.activeColors = activeColors;
 
         if (this.scoreUI) this.removeChild(this.scoreUI.container);
         if (this.botScoreUI) this.removeChild(this.botScoreUI.container);
 
-        this.scoreUI = new ScoreUI(activeColors, 0, 100);
+        // ScoreUI przyjmuje teraz ID bloków
+        this.scoreUI = new ScoreUI(activeBlockIds, 0, 100);
         this.scoreUI.container.x = 10;
         this.scoreUI.container.y = 20;
         this.addChild(this.scoreUI.container);
 
-        this.botScoreUI = new ScoreUI(activeColors, 0, 100);
-        this.botScoreUI.container.x = this.GAME_LOGICAL_WIDTH - 10 - 110; 
+        this.botScoreUI = new ScoreUI(activeBlockIds, 0, 100);
+        this.botScoreUI.container.x = this.GAME_LOGICAL_WIDTH - 10 - this.scoreUI.container.width; 
         this.botScoreUI.container.y = 20;
         this.botScoreUI.container.visible = (AppConfig.gameMode === 'VS_AI');
         this.addChild(this.botScoreUI.container);
@@ -172,13 +187,11 @@ export class GameScene extends PIXI.Container implements Scene {
             this.gameManager.registerPlayer(bot);
         }
 
-        // Czyścimy stare sprite'y
         this.sprites.forEach(s => s.destroy());
         this.sprites = [];
         this.logic.initBoard(); 
         
         for(let i=0; i<this.logic.cells.length; i++) {
-            // ZMIANA KLUCZOWA: Tworzymy instancję BlockView!
             const blockView = new BlockView();
             this.boardContainer.addChild(blockView);
             this.sprites.push(blockView);
@@ -198,8 +211,34 @@ export class GameScene extends PIXI.Container implements Scene {
         if (this.botScoreUI && this.botScoreUI.container.visible) this.botScoreUI.update(delta);
 
         this.updateHintLogic(delta);
+        this.updateShake(delta); // Aktualizacja wstrząsów
         this.updateUI();
         this.renderBoard();
+    }
+
+    private triggerShake(duration: number, intensity: number) {
+        this.shakeTimer = duration;
+        this.shakeIntensity = intensity;
+    }
+
+    private updateShake(delta: number) {
+        if (this.shakeTimer > 0) {
+            this.shakeTimer -= delta / 60.0;
+            const offsetX = (Math.random() * this.shakeIntensity) - (this.shakeIntensity / 2);
+            const offsetY = (Math.random() * this.shakeIntensity) - (this.shakeIntensity / 2);
+            
+            // Trzęsiemy tylko kontenerami gry, UI zostaje w miejscu
+            this.boardContainer.x = offsetX;
+            this.boardContainer.y = this.baseBoardY + offsetY;
+            this.bgContainer.x = offsetX;
+            this.bgContainer.y = this.baseBoardY + offsetY;
+        } else {
+            // Reset do pozycji bazowej
+            this.boardContainer.x = 0;
+            this.boardContainer.y = this.baseBoardY;
+            this.bgContainer.x = 0;
+            this.bgContainer.y = this.baseBoardY;
+        }
     }
 
     private updateHintLogic(delta: number) {
@@ -254,8 +293,6 @@ export class GameScene extends PIXI.Container implements Scene {
 
         for(let i=0; i<this.logic.cells.length; i++) {
             const cell = this.logic.cells[i];
-            
-            // Tutaj sprite jest teraz typu BlockView
             const sprite = this.sprites[i]; 
             const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
             const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
@@ -275,6 +312,13 @@ export class GameScene extends PIXI.Container implements Scene {
                     else this.scoreUI.addScore(cell.typeId);
 
                     this.soundManager.playPop();
+                    
+                    // --- PRZYWRÓCONO EFEKTY JUICE ---
+                    // 1. Wibracja (krótki impuls)
+                    if (navigator.vibrate) navigator.vibrate(20);
+                    // 2. Wstrząs ekranu
+                    this.triggerShake(0.2, 5);
+
                     (sprite as any).processed = true;
                 }
                 sprite.visible = true; sprite.x = drawX; sprite.y = drawY;
@@ -298,7 +342,6 @@ export class GameScene extends PIXI.Container implements Scene {
             sprite.y = drawY; 
             sprite.scale.set(scale); 
             
-            // ZMIANA KLUCZOWA: Teraz BlockView ma metodę updateVisuals
             sprite.updateVisuals(cell.typeId);
         }
         this.boardContainer.sortableChildren = true;
@@ -313,6 +356,10 @@ export class GameScene extends PIXI.Container implements Scene {
         const block = BlockRegistry.getById(type);
         this.particles.spawn(globalPos.x, globalPos.y, block.color);
         this.soundManager.playPop();
+        
+        // Dodatkowa wibracja przy fixie deadlocka
+        if (navigator.vibrate) navigator.vibrate(20);
+
         this.idleTime = 0; this.hintIndices = [];
     }
 
@@ -342,18 +389,13 @@ export class GameScene extends PIXI.Container implements Scene {
         
         const baseX = (width - this.GAME_LOGICAL_WIDTH * scale) / 2;
         this.x = baseX; 
-        this.y = 0;
+        this.y = (height - this.GAME_LOGICAL_HEIGHT * scale) / 2;
 
-        const availableHeight = height / scale;
-        const extraSpace = availableHeight - this.GAME_LOGICAL_HEIGHT;
-        const boardY = this.GAME_LOGICAL_HEIGHT - (ROWS * TILE_SIZE) - 10;
-
-        if (extraSpace > 0) {
-            this.bgContainer.y = boardY + extraSpace;
-            this.boardContainer.y = boardY + extraSpace;
-        } else {
-            this.bgContainer.y = boardY;
-            this.boardContainer.y = boardY;
-        }
+        this.baseBoardY = 160; 
+        
+        this.bgContainer.y = this.baseBoardY;
+        this.boardContainer.y = this.baseBoardY;
+        this.bgContainer.x = 0;
+        this.boardContainer.x = 0;
     }
 }

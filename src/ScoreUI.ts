@@ -1,113 +1,136 @@
 import * as PIXI from 'pixi.js';
+import { BlockRegistry } from './BlockDef';
 
 export class ScoreUI {
     public container: PIXI.Container;
     
-    private bars: PIXI.Graphics[] = [];
-    private flashes: PIXI.Graphics[] = []; 
-    private labels: PIXI.Text[] = [];      
-    
-    // ZMIANA: Nie inicjalizujemy tutaj na sztywno, tylko dynamicznie w konstruktorze
+    private bars: PIXI.Graphics[] = []; // Wypełnienia pasków
+    private flashes: PIXI.Graphics[] = []; // NOWOŚĆ: Efekty błysku
     private values: number[] = [];
     private maxScore: number;
     
-    // --- JESZCZE MNIEJSZE WYMIARY ---
-    private barWidth: number = 12;   // Wąskie paski
-    private barHeight: number = 50;  // Niskie paski
-    private spacing: number = 8;     // Ciasne odstępy
+    // --- KONFIGURACJA STYLU ---
+    private readonly BAR_WIDTH = 16;
+    private readonly BAR_HEIGHT = 70;
+    private readonly SPACING = 8;
+    private readonly ICON_SIZE = 16;
+    private readonly PADDING = 7;
+    private readonly BAR_INNER_PADDING = 2; 
+    
+    private readonly COLOR_PANEL_BG = 0x2F3539; 
+    private readonly COLOR_SLOT_BG = 0x1A2024;  
 
-    constructor(colors: number[], yPosition: number, maxScore: number = 100) {
+    constructor(activeBlockIds: number[], yPosition: number, maxScore: number = 100) {
         this.maxScore = maxScore;
         this.container = new PIXI.Container();
         this.container.y = yPosition;
 
-        // ZMIANA: Inicjalizacja tablicy wartości zerami dla tylu kolorów, ile otrzymaliśmy
-        this.values = new Array(colors.length).fill(0);
+        this.values = new Array(activeBlockIds.length).fill(0);
 
-        // Tło panelu - OSTRE KRAWĘDZIE (rect)
-        const totalWidth = (colors.length * this.barWidth) + ((colors.length - 1) * this.spacing);
-        const paddingX = 8;
-        const paddingY = 8;
-        
+        // 1. Tło całego panelu
+        const totalWidth = (this.PADDING * 2) + (activeBlockIds.length * this.BAR_WIDTH) + ((activeBlockIds.length - 1) * this.SPACING);
+        const totalHeight = (this.PADDING * 2) + this.ICON_SIZE + 5 + this.BAR_HEIGHT;
+
         const bgPanel = new PIXI.Graphics();
-        bgPanel.rect(-paddingX, -paddingY, totalWidth + (paddingX * 2), this.barHeight + 20);
-        bgPanel.fill({ color: 0x000000, alpha: 0.6 });
-        bgPanel.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.3 });
+        bgPanel.rect(0, 0, totalWidth, totalHeight);
+        bgPanel.fill({ color: this.COLOR_PANEL_BG, alpha: 0.9 });
+        bgPanel.stroke({ width: 2, color: 0x000000, alpha: 0.5 });
         this.container.addChild(bgPanel);
 
-        colors.forEach((color, index) => {
-            const barContainer = new PIXI.Container();
-            barContainer.x = index * (this.barWidth + this.spacing);
-            this.container.addChild(barContainer);
+        // 2. Budowanie kolumn
+        activeBlockIds.forEach((blockId, index) => {
+            const blockDef = BlockRegistry.getById(blockId);
+            
+            const groupX = this.PADDING + index * (this.BAR_WIDTH + this.SPACING);
+            const groupY = this.PADDING;
 
-            // 1. Tło paska
-            const bg = new PIXI.Graphics();
-            bg.rect(0, 0, this.barWidth, this.barHeight);
-            bg.fill({ color: 0x333333, alpha: 1.0 }); 
-            barContainer.addChild(bg);
+            // A. Ikona
+            this.createIcon(blockDef, groupX + this.BAR_WIDTH / 2, groupY + this.ICON_SIZE / 2);
 
-            // 2. Wypełnienie
+            // B. Slot (Tło)
+            const slotY = groupY + this.ICON_SIZE + 5; 
+            const slot = new PIXI.Graphics();
+            slot.rect(groupX, slotY, this.BAR_WIDTH, this.BAR_HEIGHT);
+            slot.fill(this.COLOR_SLOT_BG);
+            this.container.addChild(slot);
+
+            // Wspólne wymiary dla paska i flasha
+            const innerWidth = this.BAR_WIDTH - (this.BAR_INNER_PADDING * 2);
+            const innerHeight = this.BAR_HEIGHT - (this.BAR_INNER_PADDING * 2);
+            const contentX = groupX + this.BAR_INNER_PADDING;
+            const contentY = slotY + this.BAR_HEIGHT - this.BAR_INNER_PADDING;
+
+            // C. Wypełnienie (Kolor)
             const fill = new PIXI.Graphics();
-            fill.rect(0, 0, this.barWidth, this.barHeight);
-            fill.fill(color);
-            fill.pivot.y = this.barHeight;
-            fill.y = this.barHeight;
-            fill.scale.y = 0; 
-            barContainer.addChild(fill);
+            fill.rect(0, 0, innerWidth, innerHeight);
+            fill.fill(blockDef.color); 
+            fill.x = contentX;
+            fill.y = contentY; 
+            fill.pivot.y = innerHeight;   
+            fill.scale.y = 0;                 
+            this.container.addChild(fill);
             this.bars.push(fill);
 
-            // 3. Efekt Flash
+            // D. Efekt Flash (Biały)
             const flash = new PIXI.Graphics();
-            flash.rect(0, 0, this.barWidth, this.barHeight);
-            flash.fill(0xFFFFFF); 
-            flash.pivot.y = this.barHeight; 
-            flash.y = this.barHeight;
-            flash.scale.y = 0; 
-            flash.alpha = 0;   
-            barContainer.addChild(flash);
+            flash.rect(0, 0, innerWidth, innerHeight);
+            flash.fill(0xFFFFFF); // Biały kolor
+            flash.x = contentX;
+            flash.y = contentY;
+            flash.pivot.y = innerHeight;
+            flash.scale.y = 0;
+            flash.alpha = 0; // Domyślnie niewidoczny
+            flash.blendMode = 'add'; // Tryb mieszania dla efektu "świetlistości"
+            this.container.addChild(flash);
             this.flashes.push(flash);
-
-            // 4. Licznik (bardzo mały)
-            const label = new PIXI.Text({
-                text: '0',
-                style: {
-                    fontFamily: 'Arial',
-                    fontSize: 10, // Micro font
-                    fontWeight: 'bold',
-                    fill: 0xFFFFFF,
-                    align: 'center'
-                }
-            });
-            label.anchor.set(0.5, 0); 
-            label.x = this.barWidth / 2;
-            label.y = this.barHeight + 2; 
-            barContainer.addChild(label);
-            this.labels.push(label);
         });
-        
-        this.container.pivot.x = -paddingX;
-        this.container.pivot.y = -paddingY;
     }
 
-    public addScore(colorId: number) {
-        // Zabezpieczenie na wypadek błędu indeksowania (choć po poprawce nie powinno wystąpić)
-        if (this.values[colorId] === undefined) return;
+    private createIcon(blockDef: any, x: number, y: number) {
+        const alias = blockDef.assetAlias;
+        if (PIXI.Assets.cache.has(alias)) {
+            const texture = PIXI.Assets.get(alias);
+            const sprite = new PIXI.Sprite(texture);
+            sprite.anchor.set(0.5);
+            sprite.x = x;
+            sprite.y = y;
+            const scale = this.ICON_SIZE / Math.max(texture.width, texture.height);
+            sprite.scale.set(scale); 
+            this.container.addChild(sprite);
+        } else {
+            const label = new PIXI.Text({
+                text: blockDef.symbol,
+                style: {
+                    fontFamily: 'Arial', fontSize: 12, fontWeight: 'bold',
+                    fill: blockDef.color, align: 'center'
+                }
+            });
+            label.anchor.set(0.5); label.x = x; label.y = y;
+            this.container.addChild(label);
+        }
+    }
 
-        if (this.values[colorId] < this.maxScore) {
-            this.values[colorId]++;
-            const targetScale = this.values[colorId] / this.maxScore;
-            this.bars[colorId].scale.y = targetScale;
-            this.labels[colorId].text = this.values[colorId].toString();
-            const flash = this.flashes[colorId];
-            flash.scale.y = targetScale; 
-            flash.alpha = 0.8; 
+    public addScore(typeId: number) {
+        if (this.values[typeId] === undefined) return;
+
+        if (this.values[typeId] < this.maxScore) {
+            this.values[typeId]++;
+            
+            const targetScale = Math.min(this.values[typeId] / this.maxScore, 1.0);
+            this.bars[typeId].scale.y = targetScale;
+
+            // --- TRIGGER FLASH ---
+            const flash = this.flashes[typeId];
+            flash.scale.y = targetScale;
+            flash.alpha = 1.0; // Pełna widoczność, zaniknie w update()
         }
     }
 
     public update(delta: number) {
+        // Zanikanie flasha
         for (const flash of this.flashes) {
             if (flash.alpha > 0) {
-                flash.alpha -= 0.05 * delta;
+                flash.alpha -= 0.05 * delta; // Szybkość znikania
                 if (flash.alpha < 0) flash.alpha = 0;
             }
         }
@@ -115,14 +138,11 @@ export class ScoreUI {
 
     public reset(newMaxScore: number) {
         this.maxScore = newMaxScore;
-        // ZMIANA: Resetujemy tablicę zachowując odpowiednią długość (zgodną z liczbą pasków)
-        this.values = new Array(this.bars.length).fill(0);
-        
+        this.values.fill(0);
         for (let i = 0; i < this.bars.length; i++) {
             this.bars[i].scale.y = 0;
             this.flashes[i].scale.y = 0;
             this.flashes[i].alpha = 0;
-            this.labels[i].text = '0';
         }
     }
 }
