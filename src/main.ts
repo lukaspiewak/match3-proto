@@ -2,14 +2,16 @@ import * as PIXI from 'pixi.js';
 import { SceneManager } from './SceneManager';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
-import { BlockRegistry } from './BlockDef'; // Importujemy Rejestr
+import { BlockRegistry } from './BlockDef'; 
+import { CurrentTheme } from './Config'; // Import motywu
 
 const app = new PIXI.Application();
 
 async function init() {
     await app.init({ 
         resizeTo: window,
-        backgroundColor: 0x1a1a1a,
+        // ZMIANA: Kolor z motywu
+        backgroundColor: CurrentTheme.background,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
     });
@@ -17,10 +19,8 @@ async function init() {
     window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
 
     // --- PRELOAD ASSETS ---
-    // Pobieramy manifest assetów dynamicznie z definicji bloków
     const assetsToLoad = BlockRegistry.getAssetManifest();
 
-    // Ładujemy pliki równolegle, ignorując błędy dla pojedynczych plików (fallback textowy)
     const loadPromises = assetsToLoad.map(async (asset) => {
         try {
             await PIXI.Assets.load(asset);

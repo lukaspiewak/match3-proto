@@ -10,7 +10,7 @@ import { Button } from '../ui/Button';
 import { BlockView } from '../views/BlockView'; 
 import { 
     COLS, ROWS, TILE_SIZE, GAP, CellState, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig 
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme // Import motywu
 } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
@@ -43,7 +43,7 @@ export class GameScene extends PIXI.Container implements Scene {
     // --- SCREEN SHAKE & FX ---
     private shakeTimer = 0;
     private shakeIntensity = 0;
-    private baseBoardY = 0; // Zapamiętana pozycja Y planszy
+    private baseBoardY = 0; 
 
     private backToMenuCallback: () => void;
 
@@ -61,10 +61,7 @@ export class GameScene extends PIXI.Container implements Scene {
         this.logic = new BoardLogic();
         this.logic.onBadMove = () => { 
             this.soundManager.playBadMove(); 
-            // Haptyka dla złego ruchu
             if (navigator.vibrate) navigator.vibrate(50); 
-            
-            // Mały wstrząs przy błędzie
             this.triggerShake(0.2, 3);
         };
 
@@ -86,14 +83,17 @@ export class GameScene extends PIXI.Container implements Scene {
     private setupBoardBackground() {
         const boardBg = new PIXI.Graphics();
         boardBg.rect(-GAP, -GAP, (COLS * TILE_SIZE) + GAP, (ROWS * TILE_SIZE) + GAP);
-        boardBg.fill({ color: 0x000000, alpha: 0.5 });
+        // ZMIANA: Tło planszy z motywu
+        boardBg.fill({ color: CurrentTheme.panelBg, alpha: 1.0 }); 
+        // boardBg.stroke({ width: 2, color: CurrentTheme.border }); // Opcjonalny border
         this.bgContainer.addChild(boardBg);
 
         for(let i=0; i<COLS * ROWS; i++) {
             const col = i % COLS; const row = Math.floor(i / COLS);
             const slot = new PIXI.Graphics();
             slot.rect(0, 0, TILE_SIZE - GAP, TILE_SIZE - GAP);
-            slot.fill({ color: 0x000000, alpha: 0.6 }); 
+            // ZMIANA: Kolor slotów z motywu
+            slot.fill({ color: CurrentTheme.slotBg, alpha: 1.0 }); 
             slot.x = col * TILE_SIZE; slot.y = row * TILE_SIZE;
             this.bgContainer.addChild(slot);
         }
@@ -115,20 +115,23 @@ export class GameScene extends PIXI.Container implements Scene {
 
         const timerBg = new PIXI.Graphics();
         timerBg.circle(0, 0, 30); 
-        timerBg.fill({ color: 0x222222 });
-        timerBg.stroke({ width: 3, color: 0xFFD700 }); 
+        // ZMIANA: Tło timera i akcent z motywu
+        timerBg.fill({ color: CurrentTheme.panelBg });
+        timerBg.stroke({ width: 3, color: CurrentTheme.accent }); 
         timerContainer.addChild(timerBg);
 
         this.timerValueText = new PIXI.Text({
             text: '0',
-            style: { fontFamily: 'Arial', fontSize: 24, fontWeight: 'bold', fill: 0xFFFFFF, align: 'center' }
+            // ZMIANA: Kolor tekstu
+            style: { fontFamily: 'Arial', fontSize: 24, fontWeight: 'bold', fill: CurrentTheme.textMain, align: 'center' }
         });
         this.timerValueText.anchor.set(0.5);
         timerContainer.addChild(this.timerValueText);
 
         this.timerLabel = new PIXI.Text({
             text: 'LIMIT',
-            style: { fontFamily: 'Arial', fontSize: 10, fill: 0xAAAAAA, align: 'center' }
+            // ZMIANA: Kolor wygaszony
+            style: { fontFamily: 'Arial', fontSize: 10, fill: CurrentTheme.textMuted, align: 'center' }
         });
         this.timerLabel.anchor.set(0.5);
         this.timerLabel.y = 20; 
@@ -144,7 +147,7 @@ export class GameScene extends PIXI.Container implements Scene {
 
         this.statusText = new PIXI.Text({
             text: '',
-            style: { fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', fill: 0xFFFFFF, align: 'right', stroke: { color: 0x000000, width: 3 } }
+            style: { fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', fill: CurrentTheme.textMain, align: 'right', stroke: { color: 0x000000, width: 3 } }
         });
         this.statusText.anchor.set(1, 0.5); 
         this.statusText.x = menuBtn.x - 35; 
@@ -157,13 +160,11 @@ export class GameScene extends PIXI.Container implements Scene {
         this.gameManager.clearPlayers();
         
         const activeBlocks = BlockRegistry.getAll().slice(0, AppConfig.blockTypes);
-        // Pobieramy same ID dla ScoreUI
         const activeBlockIds = activeBlocks.map(b => b.id);
         
         if (this.scoreUI) this.removeChild(this.scoreUI.container);
         if (this.botScoreUI) this.removeChild(this.botScoreUI.container);
 
-        // ScoreUI przyjmuje teraz ID bloków
         this.scoreUI = new ScoreUI(activeBlockIds, 0, 100);
         this.scoreUI.container.x = 10;
         this.scoreUI.container.y = 20;
@@ -207,7 +208,7 @@ export class GameScene extends PIXI.Container implements Scene {
         if (this.botScoreUI && this.botScoreUI.container.visible) this.botScoreUI.update(delta);
 
         this.updateHintLogic(delta);
-        this.updateShake(delta); // Aktualizacja wstrząsów
+        this.updateShake(delta); 
         this.updateUI();
         this.renderBoard();
     }
@@ -223,13 +224,11 @@ export class GameScene extends PIXI.Container implements Scene {
             const offsetX = (Math.random() * this.shakeIntensity) - (this.shakeIntensity / 2);
             const offsetY = (Math.random() * this.shakeIntensity) - (this.shakeIntensity / 2);
             
-            // Trzęsiemy tylko kontenerami gry, UI zostaje w miejscu
             this.boardContainer.x = offsetX;
             this.boardContainer.y = this.baseBoardY + offsetY;
             this.bgContainer.x = offsetX;
             this.bgContainer.y = this.baseBoardY + offsetY;
         } else {
-            // Reset do pozycji bazowej
             this.boardContainer.x = 0;
             this.boardContainer.y = this.baseBoardY;
             this.bgContainer.x = 0;
@@ -265,8 +264,8 @@ export class GameScene extends PIXI.Container implements Scene {
 
     private updateUI() {
         this.statusText.text = this.gameManager.gameStatusText;
-        if (this.gameManager.turnTimer < 5.0) this.statusText.style.fill = 0xFF0000;
-        else this.statusText.style.fill = 0xFFFFFF;
+        if (this.gameManager.turnTimer < 5.0) this.statusText.style.fill = CurrentTheme.danger; // Zmiana na kolor ostrzegawczy
+        else this.statusText.style.fill = CurrentTheme.textMain;
 
         if (AppConfig.limitMode === 'MOVES') {
             this.timerLabel.text = 'MOVES';
@@ -309,7 +308,6 @@ export class GameScene extends PIXI.Container implements Scene {
 
                     this.soundManager.playPop();
                     
-                    // --- EFEKTY JUICE ---
                     if (navigator.vibrate) navigator.vibrate(20);
                     this.triggerShake(0.2, 5);
 
@@ -359,10 +357,11 @@ export class GameScene extends PIXI.Container implements Scene {
     private onGameFinished(reason: string) {
         const overlay = new PIXI.Graphics();
         overlay.rect(0, 0, this.GAME_LOGICAL_WIDTH, this.GAME_LOGICAL_HEIGHT);
+        // ZMIANA: Tło overlayu
         overlay.fill({ color: 0x000000, alpha: 0.8 });
         this.addChild(overlay); 
         
-        const text = new PIXI.Text({ text: `GAME OVER\n${reason}\nClick to Menu`, style: { fill: 0xFFFFFF, fontSize: 32, align: 'center' }});
+        const text = new PIXI.Text({ text: `GAME OVER\n${reason}\nClick to Menu`, style: { fill: CurrentTheme.textMain, fontSize: 32, align: 'center' }});
         text.anchor.set(0.5);
         text.x = this.GAME_LOGICAL_WIDTH / 2; text.y = this.GAME_LOGICAL_HEIGHT / 2;
         this.addChild(text);

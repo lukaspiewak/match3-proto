@@ -4,8 +4,8 @@ import { BlockRegistry } from './BlockDef';
 export class ScoreUI {
     public container: PIXI.Container;
     
-    private bars: PIXI.Graphics[] = []; // Wypełnienia pasków
-    private flashes: PIXI.Graphics[] = []; // NOWOŚĆ: Efekty błysku
+    private bars: PIXI.Graphics[] = []; 
+    private flashes: PIXI.Graphics[] = []; 
     private values: number[] = [];
     private maxScore: number;
     
@@ -44,7 +44,7 @@ export class ScoreUI {
             const groupX = this.PADDING + index * (this.BAR_WIDTH + this.SPACING);
             const groupY = this.PADDING;
 
-            // A. Ikona
+            // A. Ikona (Teraz używa iconColor!)
             this.createIcon(blockDef, groupX + this.BAR_WIDTH / 2, groupY + this.ICON_SIZE / 2);
 
             // B. Slot (Tło)
@@ -54,7 +54,6 @@ export class ScoreUI {
             slot.fill(this.COLOR_SLOT_BG);
             this.container.addChild(slot);
 
-            // Wspólne wymiary dla paska i flasha
             const innerWidth = this.BAR_WIDTH - (this.BAR_INNER_PADDING * 2);
             const innerHeight = this.BAR_HEIGHT - (this.BAR_INNER_PADDING * 2);
             const contentX = groupX + this.BAR_INNER_PADDING;
@@ -71,16 +70,16 @@ export class ScoreUI {
             this.container.addChild(fill);
             this.bars.push(fill);
 
-            // D. Efekt Flash (Biały)
+            // D. Efekt Flash
             const flash = new PIXI.Graphics();
             flash.rect(0, 0, innerWidth, innerHeight);
-            flash.fill(0xFFFFFF); // Biały kolor
+            flash.fill(0xFFFFFF); 
             flash.x = contentX;
             flash.y = contentY;
             flash.pivot.y = innerHeight;
             flash.scale.y = 0;
-            flash.alpha = 0; // Domyślnie niewidoczny
-            flash.blendMode = 'add'; // Tryb mieszania dla efektu "świetlistości"
+            flash.alpha = 0; 
+            flash.blendMode = 'add'; 
             this.container.addChild(flash);
             this.flashes.push(flash);
         });
@@ -96,13 +95,19 @@ export class ScoreUI {
             sprite.y = y;
             const scale = this.ICON_SIZE / Math.max(texture.width, texture.height);
             sprite.scale.set(scale); 
+            
+            // ZMIANA: Barwimy ikonę również w UI
+            sprite.tint = blockDef.iconColor; 
+            
             this.container.addChild(sprite);
         } else {
             const label = new PIXI.Text({
                 text: blockDef.symbol,
                 style: {
                     fontFamily: 'Arial', fontSize: 12, fontWeight: 'bold',
-                    fill: blockDef.color, align: 'center'
+                    // ZMIANA: Kolor tekstu z definicji
+                    fill: blockDef.iconColor, 
+                    align: 'center'
                 }
             });
             label.anchor.set(0.5); label.x = x; label.y = y;
@@ -119,18 +124,16 @@ export class ScoreUI {
             const targetScale = Math.min(this.values[typeId] / this.maxScore, 1.0);
             this.bars[typeId].scale.y = targetScale;
 
-            // --- TRIGGER FLASH ---
             const flash = this.flashes[typeId];
             flash.scale.y = targetScale;
-            flash.alpha = 1.0; // Pełna widoczność, zaniknie w update()
+            flash.alpha = 1.0; 
         }
     }
 
     public update(delta: number) {
-        // Zanikanie flasha
         for (const flash of this.flashes) {
             if (flash.alpha > 0) {
-                flash.alpha -= 0.05 * delta; // Szybkość znikania
+                flash.alpha -= 0.05 * delta; 
                 if (flash.alpha < 0) flash.alpha = 0;
             }
         }

@@ -47,3 +47,30 @@ export const AppConfig = {
     blockTypes: 5 as number,
     gravityDir: 'DOWN' as GravityDir
 };
+
+// --- SYSTEM MOTYWÓW (THEMING) ---
+export const CurrentTheme = {
+    // Główne tło (#1a202c)
+    background: 0x1a202c, 
+    
+    // UI Panele (nieco jaśniejsze od tła - #2d3748)
+    panelBg: 0x2d3748,
+    
+    // Sloty/Wgłębienia (ciemniejsze - #171923)
+    slotBg: 0x171923,
+    
+    // Tekst główny (biały/jasnoszary - #f7fafc)
+    textMain: 0xf7fafc,
+    
+    // Tekst drugoplanowy (szary - #a0aec0)
+    textMuted: 0xa0aec0,
+    
+    // Akcent główny (Złoty/Pomarańczowy - #ecc94b)
+    accent: 0xecc94b,
+    
+    // Akcent ostrzegawczy (Czerwony - #f56565)
+    danger: 0xf56565,
+    
+    // Obramowania (delikatne)
+    border: 0x4a5568
+};

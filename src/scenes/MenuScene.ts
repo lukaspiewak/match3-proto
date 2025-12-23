@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
-import { Button } from '../ui/Button'; // Importuj nową klasę
-import { AppConfig, type GravityDir } from '../Config';
+import { Button } from '../ui/Button'; 
+import { AppConfig, type GravityDir, CurrentTheme } from '../Config'; // Import motywu
 import { type Scene } from '../SceneManager';
 
 export class MenuScene extends PIXI.Container implements Scene {
@@ -34,7 +34,7 @@ export class MenuScene extends PIXI.Container implements Scene {
     private buildMainMenu() {
         const title = new PIXI.Text({
             text: 'MATCH-3 ENGINE',
-            style: { fontFamily: 'Arial', fontSize: 40, fontWeight: 'bold', fill: 0xFFFFFF, align: 'center' }
+            style: { fontFamily: 'Arial', fontSize: 40, fontWeight: 'bold', fill: CurrentTheme.textMain, align: 'center' }
         });
         title.anchor.set(0.5);
         title.y = 100;
@@ -64,7 +64,7 @@ export class MenuScene extends PIXI.Container implements Scene {
     }
 
     private buildOptionsMenu() {
-        const title = new PIXI.Text({ text: 'OPTIONS', style: { fill: 0xFFFFFF, fontSize: 32 } });
+        const title = new PIXI.Text({ text: 'OPTIONS', style: { fill: CurrentTheme.textMain, fontSize: 32 } });
         title.anchor.set(0.5);
         title.y = 50;
         this.optionsContainer.addChild(title);

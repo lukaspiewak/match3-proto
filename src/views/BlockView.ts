@@ -12,17 +12,13 @@ export class BlockView extends PIXI.Container {
     constructor() {
         super();
 
-        // Obliczamy połowę rozmiaru do centrowania
         const size = TILE_SIZE - GAP;
         const half = size / 2;
 
-        // 1. Tło klocka
         this.bg = new PIXI.Graphics();
         this.bg.rect(0, 0, size, size);
         this.bg.fill(0xFFFFFF); 
         
-        // ZMIANA: Ustawiamy pivot na środek, ale NIE przesuwamy x/y.
-        // Dzięki temu (0,0) tego kontenera to środek klocka.
         this.bg.pivot.set(half, half);
         this.bg.x = 0; 
         this.bg.y = 0;
@@ -52,11 +48,10 @@ export class BlockView extends PIXI.Container {
         const useSvg = PIXI.Assets.cache.has(alias);
 
         if (useSvg) {
-            // --- WARIANT SVG ---
             if (!this.iconSprite) {
                 this.iconSprite = new PIXI.Sprite();
-                this.iconSprite.anchor.set(0.5); // Ikona ma środek w (0,0)
-                this.iconSprite.x = 0; // ZMIANA: Wyzerowane (względem środka klocka)
+                this.iconSprite.anchor.set(0.5);
+                this.iconSprite.x = 0;
                 this.iconSprite.y = 0;
                 this.addChild(this.iconSprite);
             }
@@ -67,10 +62,16 @@ export class BlockView extends PIXI.Container {
             const scale = (TILE_SIZE - GAP) / Math.max(texture.width, texture.height);
             this.iconSprite.scale.set(scale * 0.8);
             
+            // ZMIANA: Barwimy ikonę na zdefiniowany kolor akcentowy
+            // (Zadziała idealnie dla białych SVG, dla czarnych nie będzie zmiany)
+            this.iconSprite.tint = blockDef.iconColor; 
+            
+            // Opcjonalnie: lekka przezroczystość, by wtopić ikonę
+            this.iconSprite.alpha = 0.8;
+
             this.iconSprite.visible = true;
 
         } else {
-            // --- WARIANT TEKSTOWY ---
             if (!this.iconText) {
                 this.iconText = new PIXI.Text({
                     text: '',
@@ -78,18 +79,20 @@ export class BlockView extends PIXI.Container {
                         fontFamily: 'Arial',
                         fontSize: 32,
                         fontWeight: 'bold',
-                        fill: 0x000000,
-                        align: 'center',
-                        alpha: 0.5
+                        align: 'center'
                     }
                 });
                 this.iconText.anchor.set(0.5);
-                this.iconText.x = 0; // ZMIANA: Wyzerowane
+                this.iconText.x = 0;
                 this.iconText.y = 0;
                 this.addChild(this.iconText);
             }
             
             this.iconText.text = blockDef.symbol;
+            // ZMIANA: Używamy dedykowanego koloru ikony zamiast czarnego
+            this.iconText.style.fill = blockDef.iconColor;
+            this.iconText.alpha = 0.8; // Lekka przezroczystość
+
             this.iconText.visible = true;
         }
     }
