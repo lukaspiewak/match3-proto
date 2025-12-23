@@ -159,11 +159,7 @@ export class GameScene extends PIXI.Container implements Scene {
         const activeBlocks = BlockRegistry.getAll().slice(0, AppConfig.blockTypes);
         // Pobieramy same ID dla ScoreUI
         const activeBlockIds = activeBlocks.map(b => b.id);
-        const activeColors = activeBlocks.map(b => b.color); // Cache dla cząsteczek
-
-        // Aktualizujemy lokalny cache kolorów (jeśli używany gdzieś indziej)
-        this.activeColors = activeColors;
-
+        
         if (this.scoreUI) this.removeChild(this.scoreUI.container);
         if (this.botScoreUI) this.removeChild(this.botScoreUI.container);
 
@@ -313,10 +309,8 @@ export class GameScene extends PIXI.Container implements Scene {
 
                     this.soundManager.playPop();
                     
-                    // --- PRZYWRÓCONO EFEKTY JUICE ---
-                    // 1. Wibracja (krótki impuls)
+                    // --- EFEKTY JUICE ---
                     if (navigator.vibrate) navigator.vibrate(20);
-                    // 2. Wstrząs ekranu
                     this.triggerShake(0.2, 5);
 
                     (sprite as any).processed = true;
@@ -357,7 +351,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.particles.spawn(globalPos.x, globalPos.y, block.color);
         this.soundManager.playPop();
         
-        // Dodatkowa wibracja przy fixie deadlocka
         if (navigator.vibrate) navigator.vibrate(20);
 
         this.idleTime = 0; this.hintIndices = [];
