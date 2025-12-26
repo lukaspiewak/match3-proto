@@ -4,16 +4,13 @@ import { BlockRegistry } from '../BlockDef';
 export class GridPhysics {
     private cells: Cell[];
     
-    // Parametry fizyki (Floaty / Casual feel)
     private readonly SWAP_SPEED = 0.20;
     private readonly GRAVITY_ACCEL = 0.008;
     private readonly MAX_SPEED = 0.6;
 
-    // Kierunek grawitacji
     public dirX: number = 0;
     public dirY: number = 0;
 
-    // Callbacki do komunikacji z BoardLogic
     public onDropDown: ((id: number) => void) | null = null;
     public onNeedsMatchCheck: (() => void) | null = null;
 
@@ -43,7 +40,7 @@ export class GridPhysics {
         
         for (let p = 0; p < primarySize; p++) {
             let emptySlots = 0;
-            // Kierunek skanowania
+            // Kierunek skanowania (od dołu do góry względem grawitacji)
             let start = (this.dirX > 0 || this.dirY > 0) ? secondarySize - 1 : 0;
             let end = (this.dirX > 0 || this.dirY > 0) ? -1 : secondarySize;
             let step = (this.dirX > 0 || this.dirY > 0) ? -1 : 1;
@@ -55,15 +52,25 @@ export class GridPhysics {
                 const idx = col + row * COLS;
                 const cell = this.cells[idx];
                 
+                // Pobieramy definicję, żeby sprawdzić grawitację
+                const def = (cell.typeId !== -1) ? BlockRegistry.getById(cell.typeId) : null;
+
                 if (cell.typeId === -1) { 
                     emptySlots++; 
-                } else if (emptySlots > 0) {
+                } 
+                // --- NOWOŚĆ: Blokada statyczna ---
+                else if (def && !def.hasGravity) {
+                    // Blok statyczny (Kamień) działa jak podłoga.
+                    // Wszystkie puste miejsca pod nim są ignorowane dla klocków nad nim.
+                    emptySlots = 0;
+                }
+                // Normalne przesuwanie
+                else if (emptySlots > 0) {
                     const targetCol = col + (this.dirX * emptySlots);
                     const targetRow = row + (this.dirY * emptySlots);
                     const targetIdx = targetCol + targetRow * COLS;
                     const targetCell = this.cells[targetIdx];
                     
-                    // Przenoszenie danych (w tym HP)
                     targetCell.typeId = cell.typeId; 
                     targetCell.state = CellState.FALLING;
                     targetCell.x = cell.x; 
@@ -74,13 +81,13 @@ export class GridPhysics {
                     targetCell.hp = cell.hp;
                     targetCell.maxHp = cell.maxHp;
                     
-                    // Wyczyszczenie źródła
                     cell.typeId = -1; 
                     cell.state = CellState.IDLE;
                 }
             }
             
             // 2. Generowanie nowych bloków ("Spawn Train")
+            // Wypełniamy tylko tyle miejsc, ile naliczyliśmy NAD ostatnim statycznym blokiem
             for (let i = 0; i < emptySlots; i++) {
                 let logicalS;
                 if (this.dirX > 0 || this.dirY > 0) { logicalS = emptySlots - 1 - i; } 
@@ -100,11 +107,9 @@ export class GridPhysics {
                 cell.targetY = finalRow;
                 cell.velocity = 0;
                 
-                // Inicjalizacja HP
                 cell.hp = blockDef.initialHp;
                 cell.maxHp = blockDef.initialHp;
 
-                // Logika pozycjonowania poza ekranem
                 let spawnX = finalCol;
                 let spawnY = finalRow;
 
@@ -123,7 +128,7 @@ export class GridPhysics {
         for (const cell of this.cells) {
             if (cell.typeId === -1) continue;
             
-            // --- SPADANIE (FALLING) ---
+            // --- SPADANIE ---
             if (cell.state === CellState.FALLING) {
                 cell.velocity += this.GRAVITY_ACCEL * delta;
                 if (cell.velocity > this.MAX_SPEED) cell.velocity = this.MAX_SPEED;
@@ -146,13 +151,12 @@ export class GridPhysics {
                     
                     if (this.onNeedsMatchCheck) this.onNeedsMatchCheck();
 
-                    // Obsługa Drop Down (artefakty)
                     if (this.onDropDown && cell.y === ROWS - 1 && this.dirY === 1) {
                         this.onDropDown(cell.id);
                     }
                 }
             } 
-            // --- ZAMIANA (SWAPPING) ---
+            // --- ZAMIANA ---
             else if (cell.state === CellState.SWAPPING) {
                 const diffX = cell.targetX - cell.x;
                 const diffY = cell.targetY - cell.y;

@@ -1,11 +1,12 @@
-import type { SpecialAction } from '../BlockDef';
+import type { SpecialAction, SPECIAL_BLOCK_ID } from '../BlockDef';
 import type { IBlockAction } from './IBlockAction';
 import type { BoardLogic } from '../BoardLogic';
 
-// Importy konkretnych strategii
+// Importy strategii
 import { ExplosionAction } from './ExplosionAction';
 import { LineClearAction } from './LineClearAction';
 import { MagicBonusAction } from './MagicBonusAction';
+import { CreateBlockAction } from './CreateBlockAction'; // NOWOŚĆ
 
 export class ActionManager {
     private strategies: Map<SpecialAction, IBlockAction> = new Map();
@@ -15,17 +16,20 @@ export class ActionManager {
     }
 
     private registerStrategies() {
-        this.strategies.set('EXPLODE_SMALL', new ExplosionAction(1)); // Promień 1 (3x3)
-        this.strategies.set('EXPLODE_BIG',   new ExplosionAction(2)); // Promień 2 (5x5)
+        this.strategies.set('EXPLODE_SMALL', new ExplosionAction(1));
+        this.strategies.set('EXPLODE_BIG',   new ExplosionAction(2));
         
         this.strategies.set('LINE_CLEAR_H',  new LineClearAction('HORIZONTAL'));
         this.strategies.set('LINE_CLEAR_V',  new LineClearAction('VERTICAL'));
         
         this.strategies.set('MAGIC_BONUS',   new MagicBonusAction());
         
-        // CREATE_SPECIAL jest obsługiwane specyficznie w BoardLogic (transformacja), 
-        // ale możemy dodać pustą strategię, żeby nie rzucało błędem.
-        this.strategies.set('CREATE_SPECIAL', { execute: () => {} }); 
+        // --- NOWOŚĆ: Rejestracja akcji tworzenia bloków ---
+        // Ujednolicamy CREATE_SPECIAL z innymi
+        this.strategies.set('CREATE_SPECIAL', new CreateBlockAction(100)); // Gwiazda
+        this.strategies.set('CREATE_STONE',   new CreateBlockAction(200)); // Kamień
+        this.strategies.set('CREATE_ICE',     new CreateBlockAction(300)); // Lód
+        
         this.strategies.set('NONE', { execute: () => {} });
     }
 

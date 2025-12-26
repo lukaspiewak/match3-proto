@@ -7,7 +7,6 @@ export class HintSystem {
     private board: BoardLogic;
     private matchEngine: MatchEngine;
     
-    // NOWOŚĆ: Wewnętrzny licznik
     private idleTimer: number = 0;
     private activeHint: number[] | null = null;
 
@@ -16,30 +15,23 @@ export class HintSystem {
         this.matchEngine = matchEngine;
     }
 
-    // NOWOŚĆ: Metoda update wywoływana co klatkę
     public update(dt: number) {
-        // Jeśli plansza jest stabilna (nic się nie dzieje)
         if (this.board.cells.every(c => c.state === CellState.IDLE)) {
             this.idleTimer += dt;
             
-            // Jeśli minął czas i nie mamy jeszcze aktywnej podpowiedzi
             if (this.idleTimer >= VisualConfig.HINT_DELAY_SECONDS && this.activeHint === null) {
                 const hint = this.findHint();
                 if (hint) {
                     this.activeHint = hint;
-                    // Emitujemy zdarzenie przez BoardLogic
                     this.board.emit('hint', hint);
                 } else {
-                    // Brak ruchów - deadlock?
                     const fix = this.findDeadlockFix();
                     if (fix) {
-                        // Automatyczna naprawa (BoardLogic to obsłuży lub przekaże wyżej)
                         this.board.emit('deadlock', fix);
                     }
                 }
             }
         } else {
-            // Jeśli gracz coś robi lub klocki spadają - resetujemy licznik
             this.reset();
         }
     }
@@ -48,17 +40,22 @@ export class HintSystem {
         this.idleTimer = 0;
         if (this.activeHint !== null) {
             this.activeHint = null;
-            this.board.emit('hint', []); // Pusta tablica = wyłącz podświetlenie
+            this.board.emit('hint', []); 
         }
     }
 
     public findHint(): number[] | null {
-        // ... (kod bez zmian) ...
+        if (!this.board.cells.every(c => c.state === CellState.IDLE)) return null;
+        
         const cells = this.board.cells;
         for (let idx = 0; idx < cells.length; idx++) {
             const cell = cells[idx]; 
             if (cell.typeId === -1) continue;
             
+            // Optymalizacja: Pomiń od razu unswappable
+            const def = BlockRegistry.getById(cell.typeId);
+            if (!def || !def.isSwappable) continue;
+
             const col = idx % COLS; 
             const row = Math.floor(idx / COLS);
             
@@ -75,11 +72,11 @@ export class HintSystem {
     }
 
     private simulateSwap(idxA: number, idxB: number): boolean {
-        // ... (kod bez zmian) ...
         const cells = this.board.cells;
         const defA = BlockRegistry.getById(cells[idxA].typeId);
         const defB = BlockRegistry.getById(cells[idxB].typeId);
         
+        // Zabezpieczenie przed przesuwaniem kamieni/przeszkód
         if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) return false;
 
         const t = cells[idxA].typeId; 
@@ -95,14 +92,18 @@ export class HintSystem {
     }
 
     public findDeadlockFix(): { id: number, targetType: number } | null {
-        // ... (kod bez zmian) ...
         const cells = this.board.cells;
         for (let i = 0; i < cells.length; i++) {
             const originalType = cells[i].typeId; 
             if (originalType === -1) continue;
             
+            // ZMIANA: Nie próbujemy naprawiać deadlocka zmieniając kamienie/przeszkody
+            const def = BlockRegistry.getById(originalType);
+            if (!def || !def.isSwappable) continue;
+
             for (let t = 0; t < AppConfig.blockTypes; t++) {
                 if (t === originalType) continue; 
+                
                 cells[i].typeId = t;
                 if (this.findHint() !== null) { 
                     cells[i].typeId = originalType; 
