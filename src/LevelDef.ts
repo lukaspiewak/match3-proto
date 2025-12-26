@@ -1,7 +1,3 @@
-import { COLS, ROWS } from './Config';
-
-// USUNIĘTO BŁĘDNY IMPORT: import { R, S, I } from './LevelDef';
-
 // Stałe dla czytelności
 export const R_ = -1;  // Random (Losowy)
 export const S_ = 200; // Stone (Kamień)
@@ -18,6 +14,7 @@ export interface LevelGoal {
 
 export interface LevelConfig {
     id: string;
+    name: string;            // NOWOŚĆ: Nazwa wyświetlana w menu
     layout: number[][];      // Układ planszy (7x9)
     moveLimit: number;       // Limit ruchów (0 = brak)
     timeLimit: number;       // Limit czasu w sekundach (0 = brak)
@@ -25,21 +22,21 @@ export interface LevelConfig {
 }
 
 // --- POZIOM 1: Kopalnia ---
-// Cel: Zbij 5 kamieni.
 export const LEVEL_1: LevelConfig = {
     id: "level_1",
+    name: "Level 1: The Mine",
     moveLimit: 20,
     timeLimit: 0,
     goals: [
-        { type: 'COLLECT', targetId: 200, amount: 5 } // ID 200 = Kamień
+        { type: 'COLLECT', targetId: 200, amount: 5 } // Zbij 5 kamieni
     ],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],
-        [R_, R_, S_, S_, S_, R_, R_], // Kamienie na górze
+        [R_, R_, S_, S_, S_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, S_, R_, S_, R_, R_],
-        [R_, R_, R_, I_, R_, R_, R_], // Trochę lodu
+        [R_, R_, R_, I_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_]
@@ -49,6 +46,7 @@ export const LEVEL_1: LevelConfig = {
 // --- POZIOM 2: Zamarznięte Serce ---
 export const LEVEL_2: LevelConfig = {
     id: "level_2",
+    name: "Level 2: Frozen Time",
     moveLimit: 0,
     timeLimit: 90,
     goals: [
@@ -61,8 +59,11 @@ export const LEVEL_2: LevelConfig = {
         [S_, I_, R_, R_, R_, I_, S_],
         [S_, I_, R_, R_, R_, I_, S_],
         [S_, I_, I_, I_, I_, I_, S_],
-        [S_, S_, S_, R_, S_, S_, S_], // Tylko jedno wejście
+        [S_, S_, S_, R_, S_, S_, S_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_]
     ]
 };
+
+// Eksportujemy listę wszystkich poziomów dla Menu
+export const LEVELS = [LEVEL_1, LEVEL_2];

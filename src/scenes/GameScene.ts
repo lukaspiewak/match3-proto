@@ -9,15 +9,14 @@ import { Button } from '../ui/Button';
 import { BoardRenderer } from '../views/BoardRenderer'; 
 import { 
     COLS, ROWS, TILE_SIZE, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme, VisualConfig 
 } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
-// ZMIANA: Importujemy LEVEL_1
-import { LEVEL_1 } from '../LevelDef';
+// Importujemy typ, ale nie konkretny poziom (ten przyjdzie z zewnątrz)
+import { type LevelConfig, LEVEL_1 } from '../LevelDef'; 
 
 export class GameScene extends PIXI.Container implements Scene {
-    // ... (pola klasy bez zmian) ...
     private app: PIXI.Application;
     private logic: BoardLogic;
     private gameManager: GameManager;
@@ -28,9 +27,12 @@ export class GameScene extends PIXI.Container implements Scene {
     private botScoreUI!: ScoreUI;
     private timerValueText!: PIXI.Text;
     private timerLabel!: PIXI.Text;
-    private statusText!: PIXI.Text; // To będzie nasze główne pole info
+    private statusText!: PIXI.Text;
     
     private backToMenuCallback: () => void;
+    // NOWOŚĆ: Przechowujemy wybrany poziom
+    private pendingLevelConfig: LevelConfig | null = null;
+
     private readonly GAME_LOGICAL_WIDTH = (COLS * TILE_SIZE) + 20;
     private readonly GAME_LOGICAL_HEIGHT = (ROWS * TILE_SIZE) + 150 + 20;
 
@@ -53,13 +55,17 @@ export class GameScene extends PIXI.Container implements Scene {
         this.gameManager = new GameManager(this.logic);
         this.setupUI();
         
-        // ZMIANA: Obsługa końca gry (Win/Loss)
         this.gameManager.onGameFinished = (reason, win) => this.onGameFinished(reason, win);
     }
 
+    // Metoda wywoływana przez main.ts przed pokazaniem sceny
+    public setCurrentLevel(level: LevelConfig) {
+        this.pendingLevelConfig = level;
+    }
+
     private setupUI() {
-        // ... (bez zmian: TimerContainer, MenuBtn) ...
         const UI_CENTER_X = this.GAME_LOGICAL_WIDTH / 2;
+
         const timerContainer = new PIXI.Container();
         timerContainer.x = UI_CENTER_X;
         timerContainer.y = 45; 
@@ -94,7 +100,6 @@ export class GameScene extends PIXI.Container implements Scene {
         menuBtn.y = 45; 
         this.addChild(menuBtn);
 
-        // ZMIANA: StatusText po lewej, większy, do wyświetlania celów
         this.statusText = new PIXI.Text({
             text: '',
             style: { fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', fill: CurrentTheme.textMain, align: 'left', stroke: { color: 0x000000, width: 3 } }
@@ -120,7 +125,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.scoreUI.container.y = 20;
         this.addChild(this.scoreUI.container);
 
-        // Bot UI opcjonalne (w levelach zazwyczaj gramy solo)
         this.botScoreUI = new ScoreUI(activeBlockIds, 0, 100);
         this.botScoreUI.container.x = this.GAME_LOGICAL_WIDTH - 10 - this.scoreUI.container.width; 
         this.botScoreUI.container.y = 20;
@@ -136,17 +140,17 @@ export class GameScene extends PIXI.Container implements Scene {
             this.gameManager.registerPlayer(bot);
         }
 
-        // Inicjalizacja wizualna (pusta, bo zaraz załaduje się level)
         this.renderer.initVisuals();
 
-        // --- ZMIANA: Ładujemy LEVEL_1 ---
-        this.gameManager.startLevel(LEVEL_1); 
+        // --- ZMIANA: Używamy poziomu wybranego w menu ---
+        const levelToLoad = this.pendingLevelConfig || LEVEL_1; // Fallback
+        this.gameManager.startLevel(levelToLoad); 
 
         this.logic.removeAllListeners(); 
         this.renderer.bindEvents(); 
 
         this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
-
+        
         this.logic.on('explode', (data: { id: number, typeId: number, x: number, y: number }) => {
             const currentId = this.gameManager.getCurrentPlayerId();
             if (currentId === PLAYER_ID_1) this.scoreUI.addScore(data.typeId);
@@ -154,7 +158,6 @@ export class GameScene extends PIXI.Container implements Scene {
             if (navigator.vibrate) navigator.vibrate(20);
         });
 
-        // Hinty
         this.logic.on('hint', (indices: number[]) => {
             this.renderer.setHints(indices);
         });
@@ -170,7 +173,8 @@ export class GameScene extends PIXI.Container implements Scene {
         this.logic.update(delta);
         
         if (this.scoreUI) this.scoreUI.update(delta);
-        
+        if (this.botScoreUI && this.botScoreUI.container.visible) this.botScoreUI.update(delta);
+
         this.updateUI();
         
         const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
@@ -179,10 +183,8 @@ export class GameScene extends PIXI.Container implements Scene {
     }
 
     private updateUI() {
-        // Tekst statusu bierze wszystko z GameManagera (Cele + Limity)
         this.statusText.text = this.gameManager.gameStatusText;
         
-        // Timer/Licznik w kółku (dla estetyki, dubluje info ale wygląda ładnie)
         if (this.gameManager.timeLeft > 0) {
             this.timerLabel.text = 'TIME';
             this.timerValueText.text = Math.ceil(this.gameManager.timeLeft).toString();
@@ -201,7 +203,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.renderer.setHints([]);
     }
 
-    // ZMIANA: Obsługa Win/Loss screena
     private onGameFinished(reason: string, win: boolean) {
         const overlay = new PIXI.Graphics();
         overlay.rect(0, 0, this.GAME_LOGICAL_WIDTH, this.GAME_LOGICAL_HEIGHT);
@@ -231,10 +232,13 @@ export class GameScene extends PIXI.Container implements Scene {
     public resize(width: number, height: number) {
         const scale = Math.min(width / this.GAME_LOGICAL_WIDTH, height / this.GAME_LOGICAL_HEIGHT); 
         this.scale.set(scale);
+        
         const baseX = (width - this.GAME_LOGICAL_WIDTH * scale) / 2;
         this.x = baseX; 
         this.y = (height - this.GAME_LOGICAL_HEIGHT * scale) / 2;
+
         this.baseBoardY = 160; 
+        
         this.renderer.x = 0;
         this.renderer.y = this.baseBoardY;
     }

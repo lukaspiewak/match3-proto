@@ -4,6 +4,7 @@ import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { BlockRegistry } from './BlockDef'; 
 import { CurrentTheme } from './Config';
+import { type LevelConfig } from './LevelDef'; // Import typu
 
 const app = new PIXI.Application();
 
@@ -17,12 +18,7 @@ async function init() {
     document.body.appendChild(app.canvas);
     window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
 
-    // --- PRELOAD ASSETS ---
-    // Pobieramy listę bloków
     const assetsToLoad = BlockRegistry.getAssetManifest();
-    
-    // NOWOŚĆ: Dodajemy ręcznie asset pęknięcia
-    // Upewnij się, że plik 'crack.svg' istnieje w public/assets/
     assetsToLoad.push({ alias: 'crack', src: '/assets/crack.svg' }); 
 
     const loadPromises = assetsToLoad.map(async (asset) => {
@@ -39,7 +35,10 @@ async function init() {
     // --- INIT SCENE MANAGER ---
     const sceneManager = new SceneManager(app);
 
-    const menuScene = new MenuScene(() => {
+    // ZMIANA: MenuScene zwraca teraz wybrany level
+    const menuScene = new MenuScene((level: LevelConfig) => {
+        // Przekazujemy wybrany level do GameScene
+        gameScene.setCurrentLevel(level);
         sceneManager.switchTo('GAME');
     });
 

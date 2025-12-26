@@ -1,34 +1,41 @@
 import * as PIXI from 'pixi.js';
 import { Button } from '../ui/Button'; 
-import { AppConfig, type GravityDir, CurrentTheme } from '../Config'; // Import motywu
+import { AppConfig, type GravityDir, CurrentTheme } from '../Config';
 import { type Scene } from '../SceneManager';
+import { LEVELS, type LevelConfig } from '../LevelDef'; // Import poziomów
 
 export class MenuScene extends PIXI.Container implements Scene {
     private mainContainer: PIXI.Container;
     private optionsContainer: PIXI.Container;
+    private levelSelectContainer: PIXI.Container; // NOWOŚĆ: Kontener wyboru poziomu
     
-    // Referencje do przycisków opcji (żeby aktualizować tekst)
     private btnOptLimit: Button;
     private btnOptVal: Button;
     private btnOptColors: Button;
     private btnOptGravity: Button;
     private btnOptSeed: Button;
 
-    private startGameCallback: () => void;
+    // Callback teraz przyjmuje wybrany poziom
+    private startGameCallback: (level: LevelConfig) => void;
 
-    constructor(startGameCallback: () => void) {
+    constructor(startGameCallback: (level: LevelConfig) => void) {
         super();
         this.startGameCallback = startGameCallback;
 
         this.mainContainer = new PIXI.Container();
         this.optionsContainer = new PIXI.Container();
+        this.levelSelectContainer = new PIXI.Container();
+
         this.optionsContainer.visible = false;
+        this.levelSelectContainer.visible = false;
 
         this.addChild(this.mainContainer);
         this.addChild(this.optionsContainer);
+        this.addChild(this.levelSelectContainer);
 
         this.buildMainMenu();
         this.buildOptionsMenu();
+        this.buildLevelSelect(); // Budujemy menu poziomów
     }
 
     private buildMainMenu() {
@@ -40,16 +47,18 @@ export class MenuScene extends PIXI.Container implements Scene {
         title.y = 100;
         this.mainContainer.addChild(title);
 
-        const btnSolo = new Button("PLAY SOLO", 200, 60, 0x00AA00, () => {
-            AppConfig.gameMode = 'SOLO';
-            this.startGameCallback();
+        // ZMIANA: Przycisk Play otwiera wybór poziomów
+        const btnPlay = new Button("PLAY", 200, 60, 0x00AA00, () => {
+            this.mainContainer.visible = false;
+            this.levelSelectContainer.visible = true;
         });
-        btnSolo.y = 200;
-        this.mainContainer.addChild(btnSolo);
+        btnPlay.y = 200;
+        this.mainContainer.addChild(btnPlay);
 
         const btnVs = new Button("VS BOT", 200, 60, 0xAA0000, () => {
             AppConfig.gameMode = 'VS_AI';
-            this.startGameCallback();
+            // Dla trybu VS ładujemy pierwszy poziom jako domyślny
+            this.startGameCallback(LEVELS[0]);
         });
         btnVs.y = 280;
         this.mainContainer.addChild(btnVs);
@@ -61,6 +70,33 @@ export class MenuScene extends PIXI.Container implements Scene {
         });
         btnOpt.y = 360;
         this.mainContainer.addChild(btnOpt);
+    }
+
+    private buildLevelSelect() {
+        const title = new PIXI.Text({ text: 'SELECT LEVEL', style: { fill: CurrentTheme.textMain, fontSize: 32 } });
+        title.anchor.set(0.5);
+        title.y = 50;
+        this.levelSelectContainer.addChild(title);
+
+        let y = 120;
+        
+        // Generujemy przycisk dla każdego poziomu z LevelDef
+        LEVELS.forEach((level, index) => {
+            const btn = new Button(level.name, 300, 50, 0x444444, () => {
+                AppConfig.gameMode = 'SOLO';
+                this.startGameCallback(level); // Uruchamiamy wybrany poziom
+            });
+            btn.y = y;
+            y += 70;
+            this.levelSelectContainer.addChild(btn);
+        });
+
+        const btnBack = new Button("BACK", 100, 50, 0x555555, () => {
+            this.levelSelectContainer.visible = false;
+            this.mainContainer.visible = true;
+        });
+        btnBack.y = y + 30;
+        this.levelSelectContainer.addChild(btnBack);
     }
 
     private buildOptionsMenu() {
@@ -132,18 +168,13 @@ export class MenuScene extends PIXI.Container implements Scene {
     public update(delta: number) {}
 
     public resize(width: number, height: number) {
-        // Centrowanie całego kontenera menu
         this.x = width / 2;
-        // Y można ustawić na sztywno lub też skalować
         this.y = 0; 
-        
-        // Opcjonalnie: Skalowanie menu jeśli ekran jest bardzo mały
-        // const scale = Math.min(width / 600, 1);
-        // this.scale.set(scale);
     }
     
     public onShow() {
         this.mainContainer.visible = true;
         this.optionsContainer.visible = false;
+        this.levelSelectContainer.visible = false;
     }
 }
