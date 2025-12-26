@@ -3,7 +3,6 @@ export const ROWS = 9;
 export const TILE_SIZE = 60;
 export const GAP = 4;
 
-// Definicje typów
 export type GameMode = 'SOLO' | 'VS_AI';
 export type LimitMode = 'NONE' | 'MOVES' | 'TIME';
 export type ComboMode = 'TIME' | 'MOVE';
@@ -27,9 +26,11 @@ export interface Cell {
     targetY: number;
     velocity: number; 
     timer: number;
+    // NOWOŚĆ: Wytrzymałość bloku
+    hp: number;
+    maxHp: number;
 }
 
-// Stałe systemowe
 export const TURN_TIME_LIMIT = 15.0; 
 export const PLAYER_ID_NONE = -1;
 export const PLAYER_ID_1 = 0; 
@@ -37,15 +38,13 @@ export const PLAYER_ID_2 = 1;
 export const COMBO_BONUS_SECONDS = 1.0; 
 export const CURRENT_GRAVITY: GravityDir = 'DOWN'; 
 
-// --- NOWOŚĆ: Konfiguracja wizualna i AI ---
 export const VisualConfig = {
-    EXPLOSION_DURATION: 15.0,  // Czas trwania animacji wybuchu (w klatkach/czasie gry)
-    HINT_DELAY_SECONDS: 3.0,   // Ile sekund bezczynności zanim pojawi się podpowiedź
-    SHAKE_STRENGTH: 6,         // Siła wstrząsu
-    SHAKE_DURATION: 0.3        // Czas wstrząsu
+    EXPLOSION_DURATION: 15.0,
+    HINT_DELAY_SECONDS: 3.0,
+    SHAKE_STRENGTH: 6,
+    SHAKE_DURATION: 0.3
 };
 
-// --- KONFIGURACJA RUNTIME ---
 export const AppConfig = {
     gameMode: 'SOLO' as GameMode,
     limitMode: 'MOVES' as LimitMode,

@@ -4,10 +4,10 @@ import { BlockRegistry } from '../BlockDef';
 export class GridPhysics {
     private cells: Cell[];
     
-    // --- PARAMETRY FIZYKI (Przywrócono wolniejsze tempo) ---
-    private readonly SWAP_SPEED = 0.20;      // Powrót do 0.20
-    private readonly GRAVITY_ACCEL = 0.008;  // Powrót do 0.008 (Floaty physics)
-    private readonly MAX_SPEED = 0.6;        // Powrót do 0.6
+    // Parametry fizyki (Floaty / Casual feel)
+    private readonly SWAP_SPEED = 0.20;
+    private readonly GRAVITY_ACCEL = 0.008;
+    private readonly MAX_SPEED = 0.6;
 
     // Kierunek grawitacji
     public dirX: number = 0;
@@ -63,6 +63,7 @@ export class GridPhysics {
                     const targetIdx = targetCol + targetRow * COLS;
                     const targetCell = this.cells[targetIdx];
                     
+                    // Przenoszenie danych (w tym HP)
                     targetCell.typeId = cell.typeId; 
                     targetCell.state = CellState.FALLING;
                     targetCell.x = cell.x; 
@@ -70,7 +71,10 @@ export class GridPhysics {
                     targetCell.velocity = cell.velocity;
                     targetCell.targetX = targetCol; 
                     targetCell.targetY = targetRow;
+                    targetCell.hp = cell.hp;
+                    targetCell.maxHp = cell.maxHp;
                     
+                    // Wyczyszczenie źródła
                     cell.typeId = -1; 
                     cell.state = CellState.IDLE;
                 }
@@ -87,13 +91,20 @@ export class GridPhysics {
                 const idx = finalCol + finalRow * COLS;
                 const cell = this.cells[idx];
                 
-                cell.typeId = BlockRegistry.getRandomBlockId(AppConfig.blockTypes);
+                const newTypeId = BlockRegistry.getRandomBlockId(AppConfig.blockTypes);
+                const blockDef = BlockRegistry.getById(newTypeId);
+
+                cell.typeId = newTypeId;
                 cell.state = CellState.FALLING;
                 cell.targetX = finalCol;
                 cell.targetY = finalRow;
                 cell.velocity = 0;
+                
+                // Inicjalizacja HP
+                cell.hp = blockDef.initialHp;
+                cell.maxHp = blockDef.initialHp;
 
-                // Nowa logika spawnowania poza ekranem (którą chwaliliśmy)
+                // Logika pozycjonowania poza ekranem
                 let spawnX = finalCol;
                 let spawnY = finalRow;
 
@@ -112,7 +123,7 @@ export class GridPhysics {
         for (const cell of this.cells) {
             if (cell.typeId === -1) continue;
             
-            // --- SPADANIE ---
+            // --- SPADANIE (FALLING) ---
             if (cell.state === CellState.FALLING) {
                 cell.velocity += this.GRAVITY_ACCEL * delta;
                 if (cell.velocity > this.MAX_SPEED) cell.velocity = this.MAX_SPEED;
@@ -135,12 +146,13 @@ export class GridPhysics {
                     
                     if (this.onNeedsMatchCheck) this.onNeedsMatchCheck();
 
+                    // Obsługa Drop Down (artefakty)
                     if (this.onDropDown && cell.y === ROWS - 1 && this.dirY === 1) {
                         this.onDropDown(cell.id);
                     }
                 }
             } 
-            // --- ZAMIANA ---
+            // --- ZAMIANA (SWAPPING) ---
             else if (cell.state === CellState.SWAPPING) {
                 const diffX = cell.targetX - cell.x;
                 const diffY = cell.targetY - cell.y;

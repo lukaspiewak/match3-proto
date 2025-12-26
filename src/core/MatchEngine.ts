@@ -1,4 +1,4 @@
-import { CellState, COLS, ROWS, AppConfig, VisualConfig, COMBO_BONUS_SECONDS } from '../Config'; // + VisualConfig
+import { CellState, COLS, ROWS, AppConfig, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
 import { BlockRegistry, SPECIAL_BLOCK_ID, type SpecialAction } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 
@@ -36,28 +36,41 @@ export class MatchEngine {
         const initialMatches = new Set<number>();
         const cells = this.board.cells;
 
+        // Skanowanie poziome
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS - 2; c++) {
                 const idx = c + r * COLS;
                 const type = cells[idx].typeId;
                 const def = BlockRegistry.getById(type);
+                
                 if (type === -1 || cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
+                
                 let matchLen = 1;
-                while (c + matchLen < COLS && cells[c + matchLen + r * COLS].typeId === type && cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
+                while (c + matchLen < COLS 
+                       && cells[c + matchLen + r * COLS].typeId === type 
+                       && cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
+                
                 if (matchLen >= 3) {
                     for (let k = 0; k < matchLen; k++) initialMatches.add((c + k) + r * COLS);
                     c += matchLen - 1;
                 }
             }
         }
+
+        // Skanowanie pionowe
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS - 2; r++) {
                 const idx = c + r * COLS;
                 const type = cells[idx].typeId;
                 const def = BlockRegistry.getById(type);
+                
                 if (type === -1 || cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
+                
                 let matchLen = 1;
-                while (r + matchLen < ROWS && cells[c + (r + matchLen) * COLS].typeId === type && cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
+                while (r + matchLen < ROWS 
+                       && cells[c + (r + matchLen) * COLS].typeId === type 
+                       && cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
+                
                 if (matchLen >= 3) {
                     for (let k = 0; k < matchLen; k++) initialMatches.add(c + (r + k) * COLS);
                     r += matchLen - 1;
@@ -66,12 +79,12 @@ export class MatchEngine {
         }
         
         if (initialMatches.size > 0) {
+            // finalMatches będzie zawierać zarówno dopasowania, jak i ofiary wybuchów
             const finalMatches = new Set(initialMatches);
+            
             this.processMatchEffects(initialMatches, finalMatches);
 
             this.currentCascadeDepth++;
-            
-            // --- ZMIANA: Użycie StatsManager ---
             this.board.statsManager.recordCascade(this.currentCascadeDepth);
             if (this.currentCascadeDepth > 1) {
                 console.log(`🌊 Cascade Depth: ${this.currentCascadeDepth}`);
@@ -84,15 +97,34 @@ export class MatchEngine {
             
             finalMatches.forEach(idx => {
                 const cell = cells[idx];
-                if (cell.state !== CellState.EXPLODING) {
-                    cell.state = CellState.EXPLODING;
-                    cell.timer = VisualConfig.EXPLOSION_DURATION;
-                    
-                    this.board.emit('explode', { 
-                        id: cell.id, 
-                        typeId: cell.typeId, 
-                        x: cell.x, 
-                        y: cell.y 
+                
+                // --- POPRAWKA LOGIKI HP ---
+                // Jeśli klocek jest częścią dopasowania (Match-3), niszczymy go natychmiast.
+                // Jeśli jest ofiarą wybuchu (Splash Damage), odejmujemy tylko 1 HP.
+                if (initialMatches.has(idx)) {
+                    cell.hp = 0; // Instakill dla dopasowanych
+                } else {
+                    cell.hp--;   // Zwykłe obrażenia dla postronnych
+                }
+
+                if (cell.hp <= 0) {
+                    if (cell.state !== CellState.EXPLODING) {
+                        cell.state = CellState.EXPLODING;
+                        cell.timer = VisualConfig.EXPLOSION_DURATION;
+                        
+                        this.board.emit('explode', { 
+                            id: cell.id, 
+                            typeId: cell.typeId, 
+                            x: cell.x, 
+                            y: cell.y 
+                        });
+                    }
+                } else {
+                    // Klocek przetrwał (tylko pękł)
+                    this.board.emit('damage', {
+                        id: cell.id,
+                        hp: cell.hp,
+                        maxHp: cell.maxHp
                     });
                 }
             });
@@ -108,13 +140,19 @@ export class MatchEngine {
         const def = BlockRegistry.getById(type);
         if (!def || !def.isMatchable) return false;
 
-        const col = idx % COLS; const row = Math.floor(idx / COLS);
-        let countH = 1, i = 1; while (col-i>=0 && cells[idx-i].typeId===type && cells[idx-i].state===CellState.IDLE) { countH++; i++; }
-        i=1; while (col+i<COLS && cells[idx+i].typeId===type && cells[idx+i].state===CellState.IDLE) { countH++; i++; }
+        const col = idx % COLS; 
+        const row = Math.floor(idx / COLS);
+        
+        let countH = 1, i = 1; 
+        while (col-i>=0 && cells[idx-i].typeId===type && cells[idx-i].state===CellState.IDLE) { countH++; i++; }
+        i=1; 
+        while (col+i<COLS && cells[idx+i].typeId===type && cells[idx+i].state===CellState.IDLE) { countH++; i++; }
         if (countH>=3) return true;
         
-        let countV = 1; i=1; while (row-i>=0 && cells[idx-i*COLS].typeId===type && cells[idx-i*COLS].state===CellState.IDLE) { countV++; i++; }
-        i=1; while (row+i<ROWS && cells[idx+i*COLS].typeId===type && cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
+        let countV = 1; i=1; 
+        while (row-i>=0 && cells[idx-i*COLS].typeId===type && cells[idx-i*COLS].state===CellState.IDLE) { countV++; i++; }
+        i=1; 
+        while (row+i<ROWS && cells[idx+i*COLS].typeId===type && cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
         if (countV>=3) return true; 
         
         return false;
@@ -127,37 +165,45 @@ export class MatchEngine {
 
         for (const idx of indices) {
             if (visited.has(idx)) continue;
+            
             const typeId = cells[idx].typeId;
             const group = [idx];
             const stack = [idx];
             visited.add(idx);
+
             while (stack.length > 0) {
                 const current = stack.pop()!;
-                const c = current % COLS; const r = Math.floor(current / COLS);
+                const c = current % COLS; 
+                const r = Math.floor(current / COLS);
                 const neighbors = [{c:c+1,r:r}, {c:c-1,r:r}, {c:c,r:r+1}, {c:c,r:r-1}];
+                
                 for (const n of neighbors) {
                     if (n.c >= 0 && n.c < COLS && n.r >= 0 && n.r < ROWS) {
                         const nIdx = n.c + n.r * COLS;
                         if (initialMatches.has(nIdx) && !visited.has(nIdx)) {
                             if (cells[nIdx].typeId === typeId) {
-                                visited.add(nIdx); stack.push(nIdx); group.push(nIdx);
+                                visited.add(nIdx); 
+                                stack.push(nIdx); 
+                                group.push(nIdx);
                             }
                         }
                     }
                 }
             }
+
             const size = group.length;
             const blockDef = BlockRegistry.getById(typeId);
             if (!blockDef) continue;
+
             let action: SpecialAction = 'NONE';
             if (size >= 5) action = blockDef.triggers.onMatch5;
             else if (size === 4) action = blockDef.triggers.onMatch4;
             else if (size === 3) action = blockDef.triggers.onMatch3;
 
             if (action !== 'NONE') {
-                console.log(`⚡ Trigger: ${action} on ${blockDef.name} (Size: ${size})`);
-                if (action === 'CREATE_SPECIAL') this.createSpecialBlock(group, finalMatches);
-                else {
+                if (action === 'CREATE_SPECIAL') {
+                    this.createSpecialBlock(group, finalMatches);
+                } else {
                     group.forEach(gIdx => this.board.runAction(action, gIdx, finalMatches));
                 }
             }
@@ -169,10 +215,19 @@ export class MatchEngine {
         if (this.lastSwapTargetId !== -1 && groupIndices.includes(this.lastSwapTargetId)) {
             targetIdx = this.lastSwapTargetId;
         }
-        console.log(`✨ Creating Special Block at index ${targetIdx}`);
+        
         const cell = this.board.cells[targetIdx];
+        const specialDef = BlockRegistry.getById(SPECIAL_BLOCK_ID);
+
+        console.log(`✨ Creating Special Block at index ${targetIdx}`);
+
         cell.typeId = SPECIAL_BLOCK_ID;
         cell.state = CellState.IDLE;
+        
+        // Resetujemy HP
+        cell.hp = specialDef.initialHp;
+        cell.maxHp = specialDef.initialHp;
+        
         finalMatches.delete(targetIdx);
     }
 
@@ -180,13 +235,12 @@ export class MatchEngine {
         let groupSize = finalMatches.size; 
         if (groupSize > this.lastMoveGroupSize) this.lastMoveGroupSize = groupSize;
 
-        // --- ZMIANA: Użycie StatsManager ---
         finalMatches.forEach(idx => {
             const type = this.board.cells[idx].typeId;
             this.board.statsManager.recordMatch(type, groupSize);
         });
         
-        if (groupSize >= 5) {
+        if (this.board.statsEnabled && groupSize >= 5) {
             console.log(`✨ MASSIVE CLEAR (Size: ${groupSize})`);
         }
     }

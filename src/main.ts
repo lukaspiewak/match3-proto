@@ -3,14 +3,13 @@ import { SceneManager } from './SceneManager';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { BlockRegistry } from './BlockDef'; 
-import { CurrentTheme } from './Config'; // Import motywu
+import { CurrentTheme } from './Config';
 
 const app = new PIXI.Application();
 
 async function init() {
     await app.init({ 
         resizeTo: window,
-        // ZMIANA: Kolor z motywu
         backgroundColor: CurrentTheme.background,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
@@ -19,7 +18,12 @@ async function init() {
     window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
 
     // --- PRELOAD ASSETS ---
+    // Pobieramy listę bloków
     const assetsToLoad = BlockRegistry.getAssetManifest();
+    
+    // NOWOŚĆ: Dodajemy ręcznie asset pęknięcia
+    // Upewnij się, że plik 'crack.svg' istnieje w public/assets/
+    assetsToLoad.push({ alias: 'crack', src: '/assets/crack.svg' }); 
 
     const loadPromises = assetsToLoad.map(async (asset) => {
         try {

@@ -32,10 +32,11 @@ export class BlockDefinition {
         public readonly description: string = "",
         customTriggers: Partial<BlockTriggers> = {},
         
-        // --- NOWE FLAGI ---
-        public readonly isIndestructible: boolean = false, // Czy odporny na wybuchy?
-        public readonly isSwappable: boolean = true,       // Czy gracz może go zamienić miejscami?
-        public readonly isMatchable: boolean = true        // Czy tworzy grupy z innymi tego typu?
+        public readonly isIndestructible: boolean = false,
+        public readonly isSwappable: boolean = true,
+        public readonly isMatchable: boolean = true,
+        // NOWOŚĆ: Domyślne HP bloku (1 = normalny, 2+ = lód/skrzynka)
+        public readonly initialHp: number = 1 
     ) {
         this.triggers = {
             onMatch3: customTriggers.onMatch3 || 'NONE',
@@ -51,7 +52,7 @@ export class BlockRegistry {
 
     public static init() {
         this.blocks = [
-            // --- ZWYKŁE BLOKI (Standardowe: Swappable=True, Matchable=True) ---
+            // Zwykłe bloki (HP 1)
             new BlockDefinition(0, "Red Heart", 0xFC8181, 0x9B2C2C, '♥', 'block_0'),
             new BlockDefinition(1, "Green Club", 0x68D391, 0x276749, '♣', 'block_1'),
             new BlockDefinition(2, "Blue Diamond", 0x63B3ED, 0x2C5282, '♦', 'block_2'),
@@ -61,42 +62,48 @@ export class BlockRegistry {
             new BlockDefinition(6, "Orange Peak", 0xF6AD55, 0x9C4221, '▲', 'block_6')
         ];
 
-        // --- BLOK SPECJALNY (Gwiazda) ---
+        // Blok Specjalny (Gwiazda)
         const specialBlock = new BlockDefinition(
             SPECIAL_BLOCK_ID, "Rainbow Star", 0xFFFFFF, 0x000000, '★', 'block_special', 0, "Moc",
             { onMatch3: 'EXPLODE_BIG', onMatch4: 'EXPLODE_BIG', onMatch5: 'EXPLODE_BIG' },
-            true, true, false 
+            false, true, true, 1
         );
         this.blocks[SPECIAL_BLOCK_ID] = specialBlock;
 
-        // --- PRZYKŁAD: KAMIEŃ (Przeszkoda) ---
-        // isSwappable = false (nie ruszysz go)
-        // isMatchable = false (3 kamienie obok siebie nic nie robią)
-        // isIndestructible = false (można go wysadzić bombą obok)
+        // Kamień (Niszczony wybuchem, nie matchowalny)
         const stoneBlock = new BlockDefinition(
             200, "Stone", 0x718096, 0x2D3748, '■', 'block_stone', 0, "Przeszkoda",
-            {}, false, false, false
+            {}, false, false, false, 1 // HP 1, ale wymaga wybuchu bo isMatchable=false
         );
         this.blocks[200] = stoneBlock;
+
+        // NOWOŚĆ: Lód (Ice) - ID 300
+        // Matchowalny (można ułożyć 3 kostki lodu), ale ma 2 HP.
+        // Po pierwszym dopasowaniu nie znika, tylko traci HP.
+        const iceBlock = new BlockDefinition(
+            300, "Ice Block", 0xA3BFFA, 0x5A67D8, '❄', 'block_ice', 10, "Lód", // Wysoka waga, żeby się często pojawiał dla testu
+            {}, false, true, true, 2 // <--- HP = 2
+        );
+        this.blocks[300] = iceBlock;
     }
 
     public static getById(id: number): BlockDefinition {
         return this.blocks[id];
     }
-
+    
+    // ... reszta bez zmian ...
     public static getAll(): BlockDefinition[] {
         return this.blocks.filter(b => b && b.id < 100);
     }
-
     public static getAssetManifest() {
-        return this.blocks.filter(b => b).map(b => ({
-            alias: b.assetAlias,
-            src: `/assets/${b.assetAlias}.svg`
-        }));
+        return this.blocks.filter(b => b).map(b => ({ alias: b.assetAlias, src: `/assets/${b.assetAlias}.svg` }));
     }
-
     public static getRandomBlockId(activeCount: number): number {
         const activeBlocks = this.blocks.slice(0, activeCount);
+        // Dodajemy Lód do puli losowania, jeśli jest zdefiniowany (dla testu)
+        const ice = this.blocks[300];
+        if(ice) activeBlocks.push(ice);
+
         const totalWeight = activeBlocks.reduce((sum, block) => sum + block.weight, 0);
         let randomValue = Random.next() * totalWeight;
         for (const block of activeBlocks) {
@@ -106,5 +113,4 @@ export class BlockRegistry {
         return activeBlocks[0].id; 
     }
 }
-
 BlockRegistry.init();
