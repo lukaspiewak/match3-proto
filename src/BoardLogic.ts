@@ -4,7 +4,8 @@ import {
     type GravityDir, 
     AppConfig, VisualConfig
 } from './Config';
-import { BlockRegistry, type SpecialAction } from './BlockDef';
+import { Random } from './Random';
+import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
 
 // Importy Podsystemów
 import { GridPhysics } from './core/GridPhysics';
@@ -97,7 +98,7 @@ export class BoardLogic extends EventEmitter {
         }
     }
 
-    public initBoard() {
+    public initBoard(levelLayout?: number[][]) {
         this.setGravity(AppConfig.gravityDir);
         this.cells.length = 0;
         this.matchEngine.reset();
@@ -108,15 +109,33 @@ export class BoardLogic extends EventEmitter {
         for (let i = 0; i < COLS * ROWS; i++) {
             const col = i % COLS;
             const row = Math.floor(i / COLS);
-            let forbiddenH = -1; let forbiddenV = -1;
-            if (col >= 2) { if (this.cells[i-1].typeId === this.cells[i-2].typeId) forbiddenH = this.cells[i-1].typeId; }
-            if (row >= 2) { if (this.cells[i-COLS].typeId === this.cells[i-(COLS*2)].typeId) forbiddenV = this.cells[i-COLS].typeId; }
-            
-            let chosenType;
-            do { chosenType = BlockRegistry.getRandomBlockId(AppConfig.blockTypes); } 
-            while (chosenType === forbiddenH || chosenType === forbiddenV);
+            let chosenType = -1;
 
+            // 1. Sprawdzamy czy mamy definicję poziomu dla tego pola
+            if (levelLayout && levelLayout[row] && levelLayout[row][col] !== undefined) {
+                const layoutValue = levelLayout[row][col];
+                if (layoutValue !== -1) {
+                    // Mamy konkretny klocek z definicji (np. kamień, lód)
+                    chosenType = layoutValue;
+                }
+            }
+
+            // 2. Jeśli nie wybrano typu (bo brak layoutu lub w layoucie był -1), losujemy
+            if (chosenType === -1) {
+                let forbiddenH = -1; let forbiddenV = -1;
+                if (col >= 2) { if (this.cells[i-1].typeId === this.cells[i-2].typeId) forbiddenH = this.cells[i-1].typeId; }
+                if (row >= 2) { if (this.cells[i-COLS].typeId === this.cells[i-(COLS*2)].typeId) forbiddenV = this.cells[i-COLS].typeId; }
+                
+                do { 
+                    chosenType = BlockRegistry.getRandomBlockId(AppConfig.blockTypes); 
+                } while (chosenType === forbiddenH || chosenType === forbiddenV);
+            }
+
+            // 3. Tworzymy komórkę
             const blockDef = BlockRegistry.getById(chosenType);
+
+            // Fallback gdyby ID z levelu nie istniało
+            const finalHp = blockDef ? blockDef.initialHp : 1;
 
             this.cells.push({
                 id: i, 
@@ -124,8 +143,8 @@ export class BoardLogic extends EventEmitter {
                 state: CellState.IDLE,
                 x: col, y: row, targetX: col, targetY: row,
                 velocity: 0, timer: 0,
-                hp: blockDef.initialHp,      // Inicjalizacja HP
-                maxHp: blockDef.initialHp
+                hp: finalHp,      // Inicjalizacja HP
+                maxHp: finalHp
             });
         }
     }
