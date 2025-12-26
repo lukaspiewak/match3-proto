@@ -5,6 +5,8 @@ import {
 } from './Config';
 import { Random } from './Random';
 import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
+// Import nowej fizyki
+import { GridPhysics } from './core/GridPhysics';
 
 export interface MoveResult {
     success: boolean;       
@@ -23,17 +25,14 @@ export interface GameStats {
 
 export class BoardLogic {
     public cells: Cell[];
+    // Fizyka w osobnym module
+    private physics: GridPhysics;
+
     public needsMatchCheck: boolean = false;
     public statsEnabled: boolean = false; 
 
-    // --- PRZYWRÓCONO WOLNIEJSZE TEMPO (Floaty Physics) ---
-    private readonly SWAP_SPEED = 0.20;      // Powrót do 0.20
-    private readonly GRAVITY_ACCEL = 0.008;  // Powrót do 0.008 (wolniejsze rozpędzanie)
-    private readonly MAX_SPEED = 0.6;        // Powrót do 0.6
-    public readonly EXPLOSION_TIME = 15.0;   // Powrót do 15.0 (dłuższy wybuch)
-
-    private dirX: number = 0;
-    private dirY: number = 0;
+    // PRZYWRÓCONO: Dłuższy czas wybuchu (pasuje do wolniejszej fizyki)
+    public readonly EXPLOSION_TIME = 15.0; 
 
     public onBadMove: (() => void) | null = null;
     
@@ -46,12 +45,9 @@ export class BoardLogic {
     private currentThinkingTime: number = 0; 
 
     private lastMoveGroupSize: number = 0;
-    
     private lastSwapTargetId: number = -1;
 
     constructor() {
-        this.setGravity(AppConfig.gravityDir);
-        
         this.stats = {
             totalMoves: 0, invalidMoves: 0, totalThinkingTime: 0,
             highestCascade: 0, matchCounts: { 3: 0, 4: 0, 5: 0 }, 
@@ -60,28 +56,43 @@ export class BoardLogic {
         for(let i=0; i < AppConfig.blockTypes; i++) this.stats.colorClears[i] = 0;
 
         this.cells = [];
+        
+        // Inicjalizacja fizyki z przekazaniem referencji do cells
+        this.physics = new GridPhysics(this.cells);
+        
+        // Podpięcie callbacków
+        this.physics.onNeedsMatchCheck = () => {
+            this.needsMatchCheck = true;
+        };
+        
+        this.physics.onDropDown = (id) => {
+            const def = BlockRegistry.getById(this.cells[id].typeId);
+            if (def && def.triggers.onDropDown !== 'NONE') {
+                this.executeSpecialAction(def.triggers.onDropDown, id, new Set([id]));
+                if (this.cells[id].state !== CellState.IDLE) {
+                    this.needsMatchCheck = false;
+                }
+            }
+        };
+
         this.initBoard();
     }
 
     public setGravity(direction: GravityDir) {
-        switch (direction) {
-            case 'DOWN': this.dirX = 0; this.dirY = 1; break;
-            case 'UP': this.dirX = 0; this.dirY = -1; break;
-            case 'RIGHT': this.dirX = 1; this.dirY = 0; break;
-            case 'LEFT': this.dirX = -1; this.dirY = 0; break;
-        }
+        this.physics.setGravity(direction);
     }
 
     public initBoard() {
         this.setGravity(AppConfig.gravityDir);
 
-        this.cells = [];
+        this.cells.length = 0;
         this.currentCombo = 0;
         this.bestCombo = 0;
         this.comboTimer = 0;
         this.currentCascadeDepth = 0;
         this.currentThinkingTime = 0;
 
+        // Inicjalizacja planszy
         for (let i = 0; i < COLS * ROWS; i++) {
             const col = i % COLS;
             const row = Math.floor(i / COLS);
@@ -93,11 +104,9 @@ export class BoardLogic {
             do { chosenType = BlockRegistry.getRandomBlockId(AppConfig.blockTypes); } 
             while (chosenType === forbiddenH || chosenType === forbiddenV);
 
-            const startX = col - (this.dirX * COLS);
-            const startY = row - (this.dirY * ROWS);
             this.cells.push({
                 id: i, typeId: chosenType, state: CellState.IDLE,
-                x: startX, y: startY, targetX: col, targetY: row,
+                x: col, y: row, targetX: col, targetY: row,
                 velocity: 0, timer: 0
             });
         }
@@ -124,8 +133,9 @@ export class BoardLogic {
         }
 
         this.updateTimers(delta);
-        this.updateGravityLogic();
-        this.updateMovement(delta);
+        
+        // Delegacja logiki ruchu do GridPhysics
+        this.physics.update(delta);
 
         if (this.needsMatchCheck) {
             this.detectMatches();
@@ -164,9 +174,10 @@ export class BoardLogic {
         this.lastSwapTargetId = idxB;
 
         const tempType = cellA.typeId; cellA.typeId = cellB.typeId; cellB.typeId = tempType;
-        const matchA = this.checkMatchAt(idxA); const matchB = this.checkMatchAt(idxB);
         const tempX = cellA.x; const tempY = cellA.y;
         cellA.x = cellB.x; cellA.y = cellB.y; cellB.x = tempX; cellB.y = tempY;
+
+        const matchA = this.checkMatchAt(idxA); const matchB = this.checkMatchAt(idxB);
        
        if (matchA || matchB) {
             if (this.statsEnabled) {
@@ -202,162 +213,18 @@ export class BoardLogic {
         }
     }
 
-    private updateGravityLogic() { 
-        const isVertical = (this.dirY !== 0);
-        const primarySize = isVertical ? COLS : ROWS;
-        const secondarySize = isVertical ? ROWS : COLS;
-        
-        for (let p = 0; p < primarySize; p++) {
-            let emptySlots = 0;
-            let start = (this.dirX > 0 || this.dirY > 0) ? secondarySize - 1 : 0;
-            let end = (this.dirX > 0 || this.dirY > 0) ? -1 : secondarySize;
-            let step = (this.dirX > 0 || this.dirY > 0) ? -1 : 1;
-            
-            for (let s = start; s !== end; s += step) {
-                const col = isVertical ? p : s;
-                const row = isVertical ? s : p;
-                const idx = col + row * COLS;
-                const cell = this.cells[idx];
-                if (cell.typeId === -1) { emptySlots++; } 
-                else if (emptySlots > 0) {
-                    const targetCol = col + (this.dirX * emptySlots);
-                    const targetRow = row + (this.dirY * emptySlots);
-                    const targetIdx = targetCol + targetRow * COLS;
-                    const targetCell = this.cells[targetIdx];
-                    targetCell.typeId = cell.typeId; 
-                    targetCell.state = CellState.FALLING;
-                    
-                    targetCell.x = cell.x; 
-                    targetCell.y = cell.y;
-                    targetCell.velocity = cell.velocity;
-                    
-                    targetCell.targetX = targetCol; 
-                    targetCell.targetY = targetRow;
-                    
-                    cell.typeId = -1; 
-                    cell.state = CellState.IDLE;
-                }
-            }
-            
-            for (let i = 0; i < emptySlots; i++) {
-                let logicalS;
-                if (this.dirX > 0 || this.dirY > 0) { logicalS = emptySlots - 1 - i; } 
-                else { logicalS = (secondarySize - emptySlots) + i; }
-                
-                const finalCol = isVertical ? p : logicalS;
-                const finalRow = isVertical ? logicalS : p;
-                const idx = finalCol + finalRow * COLS;
-                const cell = this.cells[idx];
-                
-                cell.typeId = BlockRegistry.getRandomBlockId(AppConfig.blockTypes);
-                cell.state = CellState.FALLING;
-                cell.targetX = finalCol;
-                cell.targetY = finalRow;
-                cell.velocity = 0;
-
-                let spawnX = finalCol;
-                let spawnY = finalRow;
-
-                if (this.dirY === 1) {
-                    spawnY = -(i + 1);
-                } 
-                else if (this.dirY === -1) {
-                    spawnY = ROWS + (emptySlots - i);
-                } 
-                else if (this.dirX === 1) {
-                    spawnX = -(i + 1);
-                } 
-                else if (this.dirX === -1) {
-                    spawnX = COLS + (emptySlots - i);
-                }
-
-                cell.x = spawnX;
-                cell.y = spawnY;
-            }
-        }
-    }
-
-    private updateMovement(delta: number) {
-        for (const cell of this.cells) {
-            if (cell.typeId === -1) continue;
-            
-            if (cell.state === CellState.FALLING) {
-                cell.velocity += this.GRAVITY_ACCEL * delta;
-                if (cell.velocity > this.MAX_SPEED) cell.velocity = this.MAX_SPEED;
-                
-                cell.x += this.dirX * cell.velocity * delta;
-                cell.y += this.dirY * cell.velocity * delta;
-                
-                let landed = false;
-                
-                if (this.dirX === 1 && cell.x >= cell.targetX) landed = true;
-                else if (this.dirX === -1 && cell.x <= cell.targetX) landed = true;
-                else if (this.dirY === 1 && cell.y >= cell.targetY) landed = true;
-                else if (this.dirY === -1 && cell.y <= cell.targetY) landed = true;
-                
-                if (landed) {
-                    cell.x = cell.targetX; 
-                    cell.y = cell.targetY;
-                    cell.velocity = 0; 
-                    cell.state = CellState.IDLE;
-                    this.needsMatchCheck = true;
-
-                    if (cell.y === ROWS - 1 && this.dirY === 1) {
-                        const def = BlockRegistry.getById(cell.typeId);
-                        if (def && def.triggers.onDropDown !== 'NONE') {
-                            this.executeSpecialAction(def.triggers.onDropDown, cell.id, new Set([cell.id]));
-                            if (this.cells[cell.id].state !== CellState.IDLE) { 
-                                this.needsMatchCheck = false; 
-                            }
-                        }
-                    }
-                }
-            } else if (cell.state === CellState.SWAPPING) {
-                const diffX = cell.targetX - cell.x;
-                const diffY = cell.targetY - cell.y;
-                
-                const moveAmount = this.SWAP_SPEED * delta;
-                
-                if (Math.abs(diffX) <= moveAmount) cell.x = cell.targetX;
-                else cell.x += Math.sign(diffX) * moveAmount;
-
-                if (Math.abs(diffY) <= moveAmount) cell.y = cell.targetY;
-                else cell.y += Math.sign(diffY) * moveAmount;
-
-                if (cell.x === cell.targetX && cell.y === cell.targetY) {
-                    cell.state = CellState.IDLE; 
-                    this.needsMatchCheck = true;
-                }
-            } else if (cell.state === CellState.IDLE) {
-                const diffX = cell.targetX - cell.x;
-                const diffY = cell.targetY - cell.y;
-                if (Math.abs(diffX) > 0.001 || Math.abs(diffY) > 0.001) {
-                    cell.x += diffX * this.SWAP_SPEED * delta;
-                    cell.y += diffY * this.SWAP_SPEED * delta;
-                    if (Math.abs(diffX) < 0.01 && Math.abs(diffY) < 0.01) {
-                        cell.x = cell.targetX; 
-                        cell.y = cell.targetY;
-                    }
-                }
-            }
-        }
-    }
-
+    // --- Reszta metod Match-3 bez zmian ---
+    
     public detectMatches() {
         const initialMatches = new Set<number>();
-        
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS - 2; c++) {
                 const idx = c + r * COLS;
                 const type = this.cells[idx].typeId;
-                
                 const def = BlockRegistry.getById(type);
                 if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
-                
                 let matchLen = 1;
-                while (c + matchLen < COLS 
-                       && this.cells[c + matchLen + r * COLS].typeId === type 
-                       && this.cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
+                while (c + matchLen < COLS && this.cells[c + matchLen + r * COLS].typeId === type && this.cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
                 if (matchLen >= 3) {
                     for (let k = 0; k < matchLen; k++) initialMatches.add((c + k) + r * COLS);
                     c += matchLen - 1;
@@ -368,14 +235,10 @@ export class BoardLogic {
             for (let r = 0; r < ROWS - 2; r++) {
                 const idx = c + r * COLS;
                 const type = this.cells[idx].typeId;
-                
                 const def = BlockRegistry.getById(type);
                 if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
-                
                 let matchLen = 1;
-                while (r + matchLen < ROWS 
-                       && this.cells[c + (r + matchLen) * COLS].typeId === type 
-                       && this.cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
+                while (r + matchLen < ROWS && this.cells[c + (r + matchLen) * COLS].typeId === type && this.cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
                 if (matchLen >= 3) {
                     for (let k = 0; k < matchLen; k++) initialMatches.add(c + (r + k) * COLS);
                     r += matchLen - 1;
@@ -385,17 +248,13 @@ export class BoardLogic {
         
         if (initialMatches.size > 0) {
             const finalMatches = new Set(initialMatches);
-
             this.processMatchEffects(initialMatches, finalMatches);
-
             this.currentCascadeDepth++;
             if (this.currentCascadeDepth > 1 && this.statsEnabled) {
                 if (this.currentCascadeDepth > this.stats.highestCascade) this.stats.highestCascade = this.currentCascadeDepth;
                 console.log(`🌊 Cascade Depth: ${this.currentCascadeDepth}`);
             }
-
             this.updateStats(finalMatches);
-
             this.currentCombo++;
             if (AppConfig.comboMode === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
             
@@ -412,15 +271,12 @@ export class BoardLogic {
     private processMatchEffects(initialMatches: Set<number>, finalMatches: Set<number>) {
         const visited = new Set<number>();
         const indices = Array.from(initialMatches);
-
         for (const idx of indices) {
             if (visited.has(idx)) continue;
-            
             const typeId = this.cells[idx].typeId;
             const group = [idx];
             const stack = [idx];
             visited.add(idx);
-
             while (stack.length > 0) {
                 const current = stack.pop()!;
                 const c = current % COLS; const r = Math.floor(current / COLS);
@@ -430,37 +286,24 @@ export class BoardLogic {
                         const nIdx = n.c + n.r * COLS;
                         if (initialMatches.has(nIdx) && !visited.has(nIdx)) {
                             if (this.cells[nIdx].typeId === typeId) {
-                                visited.add(nIdx);
-                                stack.push(nIdx);
-                                group.push(nIdx);
+                                visited.add(nIdx); stack.push(nIdx); group.push(nIdx);
                             }
                         }
                     }
                 }
             }
-
             const size = group.length;
             const blockDef = BlockRegistry.getById(typeId);
             if (!blockDef) continue;
-
             let action: SpecialAction = 'NONE';
-
-            if (size >= 5) {
-                action = blockDef.triggers.onMatch5;
-            } else if (size === 4) {
-                action = blockDef.triggers.onMatch4;
-            } else if (size === 3) {
-                action = blockDef.triggers.onMatch3;
-            }
+            if (size >= 5) action = blockDef.triggers.onMatch5;
+            else if (size === 4) action = blockDef.triggers.onMatch4;
+            else if (size === 3) action = blockDef.triggers.onMatch3;
 
             if (action !== 'NONE') {
                 console.log(`⚡ Trigger: ${action} on ${blockDef.name} (Size: ${size})`);
-                
-                if (action === 'CREATE_SPECIAL') {
-                    this.createSpecialBlock(group, finalMatches);
-                } else {
-                    group.forEach(gIdx => this.executeSpecialAction(action, gIdx, finalMatches));
-                }
+                if (action === 'CREATE_SPECIAL') this.createSpecialBlock(group, finalMatches);
+                else group.forEach(gIdx => this.executeSpecialAction(action, gIdx, finalMatches));
             }
         }
     }
@@ -470,91 +313,62 @@ export class BoardLogic {
         if (this.lastSwapTargetId !== -1 && groupIndices.includes(this.lastSwapTargetId)) {
             targetIdx = this.lastSwapTargetId;
         }
-
         console.log(`✨ Creating Special Block at index ${targetIdx}`);
-
         this.cells[targetIdx].typeId = SPECIAL_BLOCK_ID;
         this.cells[targetIdx].state = CellState.IDLE;
-        
         finalMatches.delete(targetIdx);
     }
 
     private executeSpecialAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
         const col = originIdx % COLS;
         const row = Math.floor(originIdx / COLS);
-
         if (!targetSet.has(originIdx)) {
             const originDef = BlockRegistry.getById(this.cells[originIdx].typeId);
-            if (!originDef || !originDef.isIndestructible) {
-                targetSet.add(originIdx);
-            }
+            if (!originDef || !originDef.isIndestructible) targetSet.add(originIdx);
         }
-
         switch (action) {
             case 'EXPLODE_SMALL':
                 for (let dy = -1; dy <= 1; dy++) {
                     for (let dx = -1; dx <= 1; dx++) {
-                        const nx = col + dx;
-                        const ny = row + dy;
+                        const nx = col + dx; const ny = row + dy;
                         if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
                             const nIdx = nx + ny * COLS;
                             if (this.cells[nIdx].typeId !== -1 && this.cells[nIdx].state !== CellState.FALLING && !targetSet.has(nIdx)) {
-                                
                                 const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
                                 if (targetDef && targetDef.isIndestructible) continue;
-
                                 targetSet.add(nIdx);
-
                                 const victim = this.cells[nIdx];
                                 const victimDef = BlockRegistry.getById(victim.typeId);
                                 if (victimDef && (victim.typeId === SPECIAL_BLOCK_ID || victimDef.triggers.onMatch3 !== 'NONE')) {
-                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) 
-                                        ? 'EXPLODE_BIG' 
-                                        : victimDef.triggers.onMatch3;
-                                        
-                                    if (reactionAction !== 'NONE') {
-                                        console.log(`💣 Chain Reaction from ${victimDef.name} at ${nIdx}`);
-                                        this.executeSpecialAction(reactionAction, nIdx, targetSet);
-                                    }
+                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) ? 'EXPLODE_BIG' : victimDef.triggers.onMatch3;
+                                    if (reactionAction !== 'NONE') this.executeSpecialAction(reactionAction, nIdx, targetSet);
                                 }
                             }
                         }
                     }
                 }
                 break;
-
             case 'EXPLODE_BIG':
                 for (let dy = -2; dy <= 2; dy++) {
                     for (let dx = -2; dx <= 2; dx++) {
-                        const nx = col + dx;
-                        const ny = row + dy;
+                        const nx = col + dx; const ny = row + dy;
                         if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
                             const nIdx = nx + ny * COLS;
                             if (this.cells[nIdx].typeId !== -1 && this.cells[nIdx].state !== CellState.FALLING && !targetSet.has(nIdx)) {
-                                
                                 const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
                                 if (targetDef && targetDef.isIndestructible) continue;
-
                                 targetSet.add(nIdx);
-
                                 const victim = this.cells[nIdx];
                                 const victimDef = BlockRegistry.getById(victim.typeId);
                                 if (victimDef && (victim.typeId === SPECIAL_BLOCK_ID || victimDef.triggers.onMatch3 !== 'NONE')) {
-                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) 
-                                        ? 'EXPLODE_BIG' 
-                                        : victimDef.triggers.onMatch3;
-                                        
-                                    if (reactionAction !== 'NONE') {
-                                        console.log(`💣 Chain Reaction from ${victimDef.name} at ${nIdx}`);
-                                        this.executeSpecialAction(reactionAction, nIdx, targetSet);
-                                    }
+                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) ? 'EXPLODE_BIG' : victimDef.triggers.onMatch3;
+                                    if (reactionAction !== 'NONE') this.executeSpecialAction(reactionAction, nIdx, targetSet);
                                 }
                             }
                         }
                     }
                 }
                 break;
-
             case 'LINE_CLEAR_H':
                 for (let c = 0; c < COLS; c++) {
                     const nIdx = c + row * COLS;
@@ -565,7 +379,6 @@ export class BoardLogic {
                     }
                 }
                 break;
-
             case 'LINE_CLEAR_V':
                 for (let r = 0; r < ROWS; r++) {
                     const nIdx = col + r * COLS;
@@ -576,11 +389,9 @@ export class BoardLogic {
                     }
                 }
                 break;
-
             case 'MAGIC_BONUS':
                 this.comboTimer += 2.0; 
                 break;
-                
             case 'CREATE_SPECIAL':
                 break;
         }
@@ -589,14 +400,10 @@ export class BoardLogic {
     private updateStats(finalMatches: Set<number>) {
         let groupSize = finalMatches.size; 
         if (groupSize > this.lastMoveGroupSize) this.lastMoveGroupSize = groupSize;
-
         finalMatches.forEach(idx => {
             const type = this.cells[idx].typeId;
-            if (this.statsEnabled && this.stats.colorClears[type] !== undefined) {
-                this.stats.colorClears[type]++;
-            }
+            if (this.statsEnabled && this.stats.colorClears[type] !== undefined) this.stats.colorClears[type]++;
         });
-        
         if (this.statsEnabled) {
              if (groupSize >= 5) {
                 this.stats.matchCounts[5]++;
@@ -613,10 +420,8 @@ export class BoardLogic {
 
     private checkMatchAt(idx: number): boolean { 
         const cell = this.cells[idx]; const type = cell.typeId; if (type === -1) return false;
-        
         const def = BlockRegistry.getById(type);
         if (!def || !def.isMatchable) return false;
-
         const col = idx % COLS; const row = Math.floor(idx / COLS);
         let countH = 1, i = 1; while (col-i>=0 && this.cells[idx-i].typeId===type && this.cells[idx-i].state===CellState.IDLE) { countH++; i++; }
         i=1; while(col+i<COLS && this.cells[idx+i].typeId===type && this.cells[idx+i].state===CellState.IDLE) { countH++; i++; }
@@ -639,7 +444,6 @@ export class BoardLogic {
         const defA = BlockRegistry.getById(this.cells[idxA].typeId);
         const defB = BlockRegistry.getById(this.cells[idxB].typeId);
         if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) return false;
-
         const t = this.cells[idxA].typeId; this.cells[idxA].typeId = this.cells[idxB].typeId; this.cells[idxB].typeId = t;
         const h = this.checkMatchAt(idxA) || this.checkMatchAt(idxB);
         this.cells[idxB].typeId = this.cells[idxA].typeId; this.cells[idxA].typeId = t; return h;
