@@ -12,6 +12,7 @@ import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';
 import { ActionManager } from './actions/ActionManager';
+import { StatsManager } from './core/StatsManager';
 
 export interface MoveResult {
     success: boolean;       
@@ -19,53 +20,33 @@ export interface MoveResult {
     maxGroupSize: number;   
 }
 
-export interface GameStats {
-    totalMoves: number;             
-    invalidMoves: number;           
-    totalThinkingTime: number;      
-    highestCascade: number;         
-    matchCounts: { [size: number]: number }; 
-    colorClears: { [typeId: number]: number };
-}
-
 export class BoardLogic extends EventEmitter {
     public cells: Cell[];
-    public stats: GameStats;
-    
     // Podsystemy
+    public statsManager: StatsManager; // Publiczny, by UI mogło czytać
     private physics: GridPhysics;
     private matchEngine: MatchEngine;
     private hintSystem: HintSystem;
     private actionManager: ActionManager;
 
     public needsMatchCheck: boolean = false;
-    public statsEnabled: boolean = false; 
-    public readonly EXPLOSION_TIME = 15.0; // Używane przez widok
+    public readonly EXPLOSION_TIME = 15.0; 
 
-    // Callbacki
     public onBadMove: (() => void) | null = null;
     
     private currentThinkingTime: number = 0; 
 
     constructor() {
         super();
-        
-        this.stats = {
-            totalMoves: 0, invalidMoves: 0, totalThinkingTime: 0,
-            highestCascade: 0, matchCounts: { 3: 0, 4: 0, 5: 0 }, 
-            colorClears: {}
-        };
-        for(let i=0; i < AppConfig.blockTypes; i++) this.stats.colorClears[i] = 0;
-
         this.cells = [];
         
         // Inicjalizacja Podsystemów
+        this.statsManager = new StatsManager();
         this.actionManager = new ActionManager();
         this.physics = new GridPhysics(this.cells);
-        this.matchEngine = new MatchEngine(this); // Przekazujemy 'this' jako kontekst
+        this.matchEngine = new MatchEngine(this);
         this.hintSystem = new HintSystem(this, this.matchEngine);
         
-        // Konfiguracja Fizyki
         this.physics.onNeedsMatchCheck = () => { this.needsMatchCheck = true; };
         
         this.physics.onDropDown = (id) => {
@@ -81,43 +62,35 @@ export class BoardLogic extends EventEmitter {
         this.initBoard();
     }
 
-    // --- Publiczne API (Proxies) ---
-    // Udostępniamy właściwości z MatchEngine dla GameManager/UI
+    // --- Proxy Properties ---
     public get currentCombo() { return this.matchEngine.currentCombo; }
     public set currentCombo(v) { this.matchEngine.currentCombo = v; }
-    
     public get comboTimer() { return this.matchEngine.comboTimer; }
     public set comboTimer(v) { this.matchEngine.comboTimer = v; }
-
     public get bestCombo() { return this.matchEngine.bestCombo; }
-    
+    public get statsEnabled() { return this.statsManager.enabled; }
+    public set statsEnabled(v: boolean) { this.statsManager.enabled = v; }
+
     public getLastMoveGroupSize() { return this.matchEngine.lastMoveGroupSize; }
-
-    public setGravity(direction: GravityDir) {
-        this.physics.setGravity(direction);
-    }
-
+    public setGravity(direction: GravityDir) { this.physics.setGravity(direction); }
     public findHint() { return this.hintSystem.findHint(); }
     public findDeadlockFix() { return this.hintSystem.findDeadlockFix(); }
 
-    // --- Główna Pętla ---
-
+    // --- Main Loop ---
     public update(delta: number) {
         const dt = delta / 60.0;
-
-        // Aktualizacja logiki Match (timery combo)
         this.matchEngine.update(dt);
 
         if (this.statsEnabled && !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE)) {
             this.currentThinkingTime += dt;
+            this.statsManager.recordThinkingTime(dt);
         }
 
-        // Aktualizacja Fizyki
         this.updateTimers(delta);
         this.physics.update(delta);
 
         if (this.needsMatchCheck) {
-            this.matchEngine.scanForMatches(); // Delegacja
+            this.matchEngine.scanForMatches();
             this.needsMatchCheck = false;
         }
     }
@@ -126,6 +99,7 @@ export class BoardLogic extends EventEmitter {
         this.setGravity(AppConfig.gravityDir);
         this.cells.length = 0;
         this.matchEngine.reset();
+        this.statsManager.reset();
         this.currentThinkingTime = 0;
 
         for (let i = 0; i < COLS * ROWS; i++) {
@@ -149,7 +123,7 @@ export class BoardLogic extends EventEmitter {
 
     public trySwap(idxA: number, dirX: number, dirY: number): MoveResult {
         const result: MoveResult = { success: false, causedMatch: false, maxGroupSize: 0 };
-        this.matchEngine.lastMoveGroupSize = 0; // Reset stats
+        this.matchEngine.lastMoveGroupSize = 0; 
 
         const col = idxA % COLS; const row = Math.floor(idxA / COLS);
         const targetCol = col + dirX; const targetRow = row + dirY;
@@ -167,40 +141,25 @@ export class BoardLogic extends EventEmitter {
             return result;
         }
         
-        if (this.statsEnabled) {
-            this.stats.totalThinkingTime += this.currentThinkingTime;
-        }
-        this.currentThinkingTime = 0; 
         this.matchEngine.currentCascadeDepth = 0;
-
         if (AppConfig.comboMode === 'MOVE') this.matchEngine.currentCombo = 0;
-
-        // Przekazanie celu ruchu do silnika (dla specjala)
         this.matchEngine.lastSwapTargetId = idxB;
 
-        // Zamiana
         const tempType = cellA.typeId; cellA.typeId = cellB.typeId; cellB.typeId = tempType;
         const tempX = cellA.x; const tempY = cellA.y;
         cellA.x = cellB.x; cellA.y = cellB.y; cellB.x = tempX; cellB.y = tempY;
 
-        // Sprawdzenie (używając MatchEngine)
         const matchA = this.matchEngine.checkMatchAt(idxA); 
         const matchB = this.matchEngine.checkMatchAt(idxB);
        
        if (matchA || matchB) {
-            if (this.statsEnabled) {
-                this.stats.totalMoves++;
-                console.log(`✅ Player Move #${this.stats.totalMoves}`);
-            }
+            this.statsManager.recordMove(true);
             cellA.state = CellState.SWAPPING;
             cellB.state = CellState.SWAPPING;
             result.success = true;
             result.causedMatch = true;
         } else {
-            if (this.statsEnabled) {
-                this.stats.invalidMoves++;
-                console.log(`❌ Invalid Player Move`);
-            }
+            this.statsManager.recordMove(false);
             cellB.typeId = cellA.typeId; cellA.typeId = tempType;
             this.matchEngine.lastSwapTargetId = -1; 
             if (this.onBadMove) this.onBadMove();
@@ -209,7 +168,6 @@ export class BoardLogic extends EventEmitter {
         return result;
     }
 
-    // Metoda pomocnicza dla ActionManagera i MatchEngine
     public runAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
         if (!targetSet.has(originIdx)) {
             const originDef = BlockRegistry.getById(this.cells[originIdx].typeId);

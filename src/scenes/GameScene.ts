@@ -3,14 +3,14 @@ import { type Scene } from '../SceneManager';
 import { BoardLogic } from '../BoardLogic';
 import { GameManager } from '../GameManager';
 import { SoundManager } from '../SoundManager';
-import { ParticleSystem } from '../ParticleSystem';
 import { ScoreUI } from '../ScoreUI';
 import { HumanPlayerController, BotPlayerController } from '../PlayerController';
 import { Button } from '../ui/Button';
-import { BlockView } from '../views/BlockView'; 
+import { BoardRenderer } from '../views/BoardRenderer'; 
 import { 
-    COLS, ROWS, TILE_SIZE, GAP, CellState, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme 
+    COLS, ROWS, TILE_SIZE, 
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme,
+    CellState 
 } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
@@ -20,30 +20,16 @@ export class GameScene extends PIXI.Container implements Scene {
     private logic: BoardLogic;
     private gameManager: GameManager;
     private soundManager: SoundManager;
-    private particles: ParticleSystem;
+    private renderer: BoardRenderer; 
     
-    // UI Elements
     private scoreUI!: ScoreUI;
     private botScoreUI!: ScoreUI;
     private timerValueText!: PIXI.Text;
     private timerLabel!: PIXI.Text;
     private statusText!: PIXI.Text;
     
-    // Board Containers
-    private bgContainer: PIXI.Container;
-    private boardContainer: PIXI.Container;
-    
-    // Sprites
-    private sprites: BlockView[] = [];
-    
     private idleTime = 0;
     private hintIndices: number[] = [];
-    private hintPulseTimer = 0;
-
-    // --- SCREEN SHAKE & FX ---
-    private shakeTimer = 0;
-    private shakeIntensity = 0;
-    private baseBoardY = 0; 
 
     private backToMenuCallback: () => void;
 
@@ -56,49 +42,22 @@ export class GameScene extends PIXI.Container implements Scene {
         this.backToMenuCallback = backToMenuCallback;
 
         this.soundManager = new SoundManager();
-        this.particles = new ParticleSystem(app); 
-        
         this.logic = new BoardLogic();
+        
+        this.renderer = new BoardRenderer(app, this.logic);
+        this.addChild(this.renderer); 
+
         this.logic.onBadMove = () => { 
             this.soundManager.playBadMove(); 
             if (navigator.vibrate) navigator.vibrate(50); 
-            this.triggerShake(0.2, 3);
+            this.renderer.triggerShake(0.2, 3);
         };
 
         this.gameManager = new GameManager(this.logic);
         
-        this.bgContainer = new PIXI.Container();
-        this.boardContainer = new PIXI.Container();
-        
-        this.addChild(this.bgContainer);
-        this.addChild(this.boardContainer); 
-        
-        this.setupBoardBackground();
         this.setupUI();
         
         this.gameManager.onGameFinished = (reason) => this.onGameFinished(reason);
-    }
-
-    private setupBoardBackground() {
-        const boardBg = new PIXI.Graphics();
-        boardBg.rect(-GAP, -GAP, (COLS * TILE_SIZE) + GAP, (ROWS * TILE_SIZE) + GAP);
-        boardBg.fill({ color: CurrentTheme.panelBg, alpha: 1.0 }); 
-        this.bgContainer.addChild(boardBg);
-
-        for(let i=0; i<COLS * ROWS; i++) {
-            const col = i % COLS; const row = Math.floor(i / COLS);
-            const slot = new PIXI.Graphics();
-            slot.rect(0, 0, TILE_SIZE - GAP, TILE_SIZE - GAP);
-            slot.fill({ color: CurrentTheme.slotBg, alpha: 1.0 }); 
-            slot.x = col * TILE_SIZE; slot.y = row * TILE_SIZE;
-            this.bgContainer.addChild(slot);
-        }
-
-        const mask = new PIXI.Graphics();
-        mask.rect(0, 0, COLS * TILE_SIZE, ROWS * TILE_SIZE);
-        mask.fill(0xffffff);
-        this.boardContainer.addChild(mask);
-        this.boardContainer.mask = mask;
     }
 
     private setupUI() {
@@ -169,7 +128,8 @@ export class GameScene extends PIXI.Container implements Scene {
         this.botScoreUI.container.visible = (AppConfig.gameMode === 'VS_AI');
         this.addChild(this.botScoreUI.container);
 
-        const human = new HumanPlayerController(PLAYER_ID_1, this.gameManager, this.logic, this.boardContainer, this.soundManager);
+        const inputContainer = this.renderer.getInputContainer();
+        const human = new HumanPlayerController(PLAYER_ID_1, this.gameManager, this.logic, inputContainer, this.soundManager);
         this.gameManager.registerPlayer(human);
 
         if (AppConfig.gameMode === 'VS_AI') {
@@ -177,82 +137,47 @@ export class GameScene extends PIXI.Container implements Scene {
             this.gameManager.registerPlayer(bot);
         }
 
-        this.sprites.forEach(s => s.destroy());
-        this.sprites = [];
         this.logic.initBoard(); 
-        
-        for(let i=0; i<this.logic.cells.length; i++) {
-            const blockView = new BlockView();
-            this.boardContainer.addChild(blockView);
-            this.sprites.push(blockView);
-        }
+        this.renderer.initVisuals();
 
         this.gameManager.startGame();
         this.idleTime = 0;
         this.hintIndices = [];
 
-        // --- ZMIANA: PODPIĘCIE EVENTÓW ---
-        // Usuwamy stare listenery, żeby nie duplikować
+        // --- TU BYŁO ŹRÓDŁO PROBLEMU ---
+        // Usuwamy stare listenery (żeby nie było duplikatów przy restarcie)
         this.logic.removeAllListeners(); 
         
+        // --- POPRAWKA: Musimy ponownie podpiąć listenery Renderera ---
+        this.renderer.bindEvents(); 
+
+        // Podpinamy listenery Sceny
         this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
 
         this.logic.on('explode', (data: { id: number, typeId: number, x: number, y: number }) => {
-            const drawX = data.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-            const drawY = data.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-            const globalPos = this.boardContainer.toGlobal({x: drawX, y: drawY});
-            
-            const blockDef = BlockRegistry.getById(data.typeId);
-            this.particles.spawn(globalPos.x, globalPos.y, blockDef ? blockDef.color : 0xFFFFFF);
-            
-            // Punktacja
             const currentId = this.gameManager.getCurrentPlayerId();
             if (currentId === PLAYER_ID_1) this.scoreUI.addScore(data.typeId);
             else if (currentId === PLAYER_ID_2) this.botScoreUI.addScore(data.typeId);
             else this.scoreUI.addScore(data.typeId);
 
             this.soundManager.playPop();
-            
             if (navigator.vibrate) navigator.vibrate(20);
-            this.triggerShake(0.2, 5);
         });
     }
 
     public update(delta: number) {
         this.gameManager.update(delta);
         this.logic.update(delta);
-        this.particles.update(delta);
         
         if (this.scoreUI) this.scoreUI.update(delta);
         if (this.botScoreUI && this.botScoreUI.container.visible) this.botScoreUI.update(delta);
 
         this.updateHintLogic(delta);
-        this.updateShake(delta); 
         this.updateUI();
-        this.renderBoard();
-    }
-
-    private triggerShake(duration: number, intensity: number) {
-        this.shakeTimer = duration;
-        this.shakeIntensity = intensity;
-    }
-
-    private updateShake(delta: number) {
-        if (this.shakeTimer > 0) {
-            this.shakeTimer -= delta / 60.0;
-            const offsetX = (Math.random() * this.shakeIntensity) - (this.shakeIntensity / 2);
-            const offsetY = (Math.random() * this.shakeIntensity) - (this.shakeIntensity / 2);
-            
-            this.boardContainer.x = offsetX;
-            this.boardContainer.y = this.baseBoardY + offsetY;
-            this.bgContainer.x = offsetX;
-            this.bgContainer.y = this.baseBoardY + offsetY;
-        } else {
-            this.boardContainer.x = 0;
-            this.boardContainer.y = this.baseBoardY;
-            this.bgContainer.x = 0;
-            this.bgContainer.y = this.baseBoardY;
-        }
+        
+        const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
+        const selectedId = human ? human.getSelectedId() : -1;
+        this.renderer.update(delta, selectedId);
     }
 
     private updateHintLogic(delta: number) {
@@ -262,6 +187,7 @@ export class GameScene extends PIXI.Container implements Scene {
                 const hint = this.logic.findHint();
                 if (hint) {
                     this.hintIndices = hint;
+                    this.renderer.setHints(hint); 
                 } else {
                     const fix = this.logic.findDeadlockFix();
                     if (fix) {
@@ -275,10 +201,8 @@ export class GameScene extends PIXI.Container implements Scene {
         } else {
             this.idleTime = 0;
             this.hintIndices = [];
+            this.renderer.setHints([]);
         }
-
-        if (this.hintIndices.length > 0) this.hintPulseTimer += delta * 0.1;
-        else this.hintPulseTimer = 0;
     }
 
     private updateUI() {
@@ -301,68 +225,12 @@ export class GameScene extends PIXI.Container implements Scene {
         }
     }
 
-    private renderBoard() {
-        const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
-        const selectedId = human ? human.getSelectedId() : -1;
-
-        for(let i=0; i<this.logic.cells.length; i++) {
-            const cell = this.logic.cells[i];
-            const sprite = this.sprites[i]; 
-            const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-            const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-
-            if (cell.typeId === -1) { sprite.visible = false; continue; }
-
-            // ZMIANA: Usunięto logikę 'processed' i particles.spawn
-            // Teraz renderujemy tylko stan wizualny.
-            
-            if (cell.state === CellState.EXPLODING) {
-                sprite.visible = true; 
-                sprite.x = drawX; 
-                sprite.y = drawY;
-                
-                // Używamy this.logic.EXPLOSION_TIME dla pewności, że pasuje do logiki
-                const progress = Math.max(0, cell.timer / this.logic.EXPLOSION_TIME); 
-                
-                sprite.scale.set(progress); 
-                sprite.alpha = progress; 
-                sprite.updateVisuals(cell.typeId); // Upewnij się, że sprite wie jaki ma kolor
-                continue;
-            }
-
-            let scale = 1.0; let zIndex = 0; let alpha = 1.0;
-            if (cell.state === CellState.SWAPPING) { zIndex = 10; }
-            else if (cell.id === selectedId) { scale = 1.15; zIndex = 20; }
-            
-            if (this.hintIndices.includes(cell.id)) {
-                alpha = 0.75 + Math.sin(this.hintPulseTimer) * 0.25;
-            }
-
-            sprite.visible = true; 
-            sprite.alpha = alpha;
-            sprite.zIndex = zIndex;
-            sprite.x = drawX; 
-            sprite.y = drawY; 
-            sprite.scale.set(scale); 
-            
-            sprite.updateVisuals(cell.typeId);
-        }
-        this.boardContainer.sortableChildren = true;
-    }
-
     private onDeadlockFixed(id: number, type: number) {
-        const cell = this.logic.cells[id];
-        const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-        const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-        const globalPos = this.boardContainer.toGlobal({x: drawX, y: drawY});
-        
-        const block = BlockRegistry.getById(type);
-        this.particles.spawn(globalPos.x, globalPos.y, block.color);
         this.soundManager.playPop();
-        
         if (navigator.vibrate) navigator.vibrate(20);
-
-        this.idleTime = 0; this.hintIndices = [];
+        this.idleTime = 0; 
+        this.hintIndices = [];
+        this.renderer.setHints([]);
     }
 
     private onGameFinished(reason: string) {
@@ -395,9 +263,7 @@ export class GameScene extends PIXI.Container implements Scene {
 
         this.baseBoardY = 160; 
         
-        this.bgContainer.y = this.baseBoardY;
-        this.boardContainer.y = this.baseBoardY;
-        this.bgContainer.x = 0;
-        this.boardContainer.x = 0;
+        this.renderer.x = 0;
+        this.renderer.y = this.baseBoardY;
     }
 }
