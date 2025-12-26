@@ -4,7 +4,7 @@ import {
     COMBO_BONUS_SECONDS, AppConfig 
 } from './Config';
 import { Random } from './Random';
-import { BlockRegistry } from './BlockDef';
+import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
 
 export interface MoveResult {
     success: boolean;       
@@ -45,6 +45,8 @@ export class BoardLogic {
     private currentThinkingTime: number = 0; 
 
     private lastMoveGroupSize: number = 0;
+    
+    private lastSwapTargetId: number = -1;
 
     constructor() {
         this.setGravity(AppConfig.gravityDir);
@@ -142,6 +144,14 @@ export class BoardLogic {
         const cellA = this.cells[idxA]; const cellB = this.cells[idxB];
         
         if (cellA.state !== CellState.IDLE || cellB.state !== CellState.IDLE) return result;
+
+        // --- ZMIANA: Sprawdzenie czy klocki można przesuwać (isSwappable) ---
+        const defA = BlockRegistry.getById(cellA.typeId);
+        const defB = BlockRegistry.getById(cellB.typeId);
+        if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) {
+            if (this.onBadMove) this.onBadMove();
+            return result;
+        }
         
         if (this.statsEnabled) {
             this.stats.totalThinkingTime += this.currentThinkingTime;
@@ -150,6 +160,8 @@ export class BoardLogic {
         this.currentCascadeDepth = 0;
 
         if (AppConfig.comboMode === 'MOVE') this.currentCombo = 0;
+
+        this.lastSwapTargetId = idxB;
 
         const tempType = cellA.typeId; cellA.typeId = cellB.typeId; cellB.typeId = tempType;
         const matchA = this.checkMatchAt(idxA); const matchB = this.checkMatchAt(idxB);
@@ -171,6 +183,7 @@ export class BoardLogic {
                 console.log(`❌ Invalid Player Move`);
             }
             cellB.typeId = cellA.typeId; cellA.typeId = tempType;
+            this.lastSwapTargetId = -1; 
             if (this.onBadMove) this.onBadMove();
             result.success = false;
         }
@@ -224,7 +237,7 @@ export class BoardLogic {
                 const finalRow = isVertical ? logicalS : p;
                 const idx = finalCol + finalRow * COLS;
                 const cell = this.cells[idx];
-                // Użycie rejestru bloków do losowania
+                
                 cell.typeId = BlockRegistry.getRandomBlockId(AppConfig.blockTypes);
                 cell.state = CellState.FALLING;
                 cell.targetX = finalCol;
@@ -239,20 +252,34 @@ export class BoardLogic {
     private updateMovement(delta: number) {
         for (const cell of this.cells) {
             if (cell.typeId === -1) continue;
+            
             if (cell.state === CellState.FALLING) {
                 cell.velocity += this.GRAVITY_ACCEL * delta;
                 if (cell.velocity > this.MAX_SPEED) cell.velocity = this.MAX_SPEED;
                 cell.x += this.dirX * cell.velocity * delta;
                 cell.y += this.dirY * cell.velocity * delta;
                 let landed = false;
+                
                 if (this.dirX === 1 && cell.x >= cell.targetX) landed = true;
                 else if (this.dirX === -1 && cell.x <= cell.targetX) landed = true;
                 else if (this.dirY === 1 && cell.y >= cell.targetY) landed = true;
                 else if (this.dirY === -1 && cell.y <= cell.targetY) landed = true;
+                
                 if (landed) {
                     cell.x = cell.targetX; cell.y = cell.targetY;
-                    cell.velocity = 0; cell.state = CellState.IDLE;
+                    cell.velocity = 0; 
+                    cell.state = CellState.IDLE;
                     this.needsMatchCheck = true;
+
+                    if (cell.y === ROWS - 1 && this.dirY === 1) {
+                        const def = BlockRegistry.getById(cell.typeId);
+                        if (def && def.triggers.onDropDown !== 'NONE') {
+                            this.executeSpecialAction(def.triggers.onDropDown, cell.id, new Set([cell.id]));
+                            if (this.cells[cell.id].state !== CellState.IDLE) { 
+                                this.needsMatchCheck = false; 
+                            }
+                        }
+                    }
                 }
             } else if (cell.state === CellState.SWAPPING) {
                 const diffX = cell.targetX - cell.x;
@@ -277,16 +304,23 @@ export class BoardLogic {
     }
 
     public detectMatches() {
-        const matchedIndices = new Set<number>();
+        const initialMatches = new Set<number>();
+        
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS - 2; c++) {
                 const idx = c + r * COLS;
                 const type = this.cells[idx].typeId;
-                if (type === -1 || this.cells[idx].state !== CellState.IDLE) continue;
+                
+                // --- ZMIANA: Sprawdzenie isMatchable ---
+                const def = BlockRegistry.getById(type);
+                if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
+                
                 let matchLen = 1;
-                while (c + matchLen < COLS && this.cells[c + matchLen + r * COLS].typeId === type && this.cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
+                while (c + matchLen < COLS 
+                       && this.cells[c + matchLen + r * COLS].typeId === type 
+                       && this.cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
                 if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) matchedIndices.add((c + k) + r * COLS);
+                    for (let k = 0; k < matchLen; k++) initialMatches.add((c + k) + r * COLS);
                     c += matchLen - 1;
                 }
             }
@@ -295,87 +329,257 @@ export class BoardLogic {
             for (let r = 0; r < ROWS - 2; r++) {
                 const idx = c + r * COLS;
                 const type = this.cells[idx].typeId;
-                if (type === -1 || this.cells[idx].state !== CellState.IDLE) continue;
+                
+                // --- ZMIANA: Sprawdzenie isMatchable ---
+                const def = BlockRegistry.getById(type);
+                if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
+                
                 let matchLen = 1;
-                while (r + matchLen < ROWS && this.cells[c + (r + matchLen) * COLS].typeId === type && this.cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
+                while (r + matchLen < ROWS 
+                       && this.cells[c + (r + matchLen) * COLS].typeId === type 
+                       && this.cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
                 if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) matchedIndices.add(c + (r + k) * COLS);
+                    for (let k = 0; k < matchLen; k++) initialMatches.add(c + (r + k) * COLS);
                     r += matchLen - 1;
                 }
             }
         }
         
-        if (matchedIndices.size > 0) {
+        if (initialMatches.size > 0) {
+            const finalMatches = new Set(initialMatches);
+
+            this.processMatchEffects(initialMatches, finalMatches);
+
             this.currentCascadeDepth++;
             if (this.currentCascadeDepth > 1 && this.statsEnabled) {
                 if (this.currentCascadeDepth > this.stats.highestCascade) this.stats.highestCascade = this.currentCascadeDepth;
                 console.log(`🌊 Cascade Depth: ${this.currentCascadeDepth}`);
             }
 
-            this.analyzeMatchStats(matchedIndices);
+            this.updateStats(finalMatches);
 
             this.currentCombo++;
-            // TUTAJ BYŁ BŁĄD - Teraz COMBO_BONUS_SECONDS jest poprawnie zaimportowane
             if (AppConfig.comboMode === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
             
-            matchedIndices.forEach(idx => {
+            finalMatches.forEach(idx => {
                 const cell = this.cells[idx];
-                cell.state = CellState.EXPLODING;
-                cell.timer = this.EXPLOSION_TIME;
+                if (cell.state !== CellState.EXPLODING) {
+                    cell.state = CellState.EXPLODING;
+                    cell.timer = this.EXPLOSION_TIME;
+                }
             });
         }
     }
 
-    private analyzeMatchStats(matchedIndices: Set<number>) {
+    private processMatchEffects(initialMatches: Set<number>, finalMatches: Set<number>) {
         const visited = new Set<number>();
-        const indices = Array.from(matchedIndices);
-        let currentMaxGroup = 0;
+        const indices = Array.from(initialMatches);
 
         for (const idx of indices) {
             if (visited.has(idx)) continue;
+            
             const typeId = this.cells[idx].typeId;
-            let groupSize = 0;
+            const group = [idx];
             const stack = [idx];
             visited.add(idx);
+
             while (stack.length > 0) {
                 const current = stack.pop()!;
-                groupSize++;
-                if (this.statsEnabled && this.stats.colorClears[typeId] !== undefined) {
-                    this.stats.colorClears[typeId]++;
-                }
                 const c = current % COLS; const r = Math.floor(current / COLS);
                 const neighbors = [{c:c+1,r:r}, {c:c-1,r:r}, {c:c,r:r+1}, {c:c,r:r-1}];
                 for (const n of neighbors) {
                     if (n.c >= 0 && n.c < COLS && n.r >= 0 && n.r < ROWS) {
                         const nIdx = n.c + n.r * COLS;
-                        if (matchedIndices.has(nIdx) && !visited.has(nIdx)) {
+                        if (initialMatches.has(nIdx) && !visited.has(nIdx)) {
                             if (this.cells[nIdx].typeId === typeId) {
-                                visited.add(nIdx); stack.push(nIdx);
+                                visited.add(nIdx);
+                                stack.push(nIdx);
+                                group.push(nIdx);
                             }
                         }
                     }
                 }
             }
-            if (groupSize > currentMaxGroup) currentMaxGroup = groupSize;
-            if (this.statsEnabled) {
-                if (groupSize >= 5) {
-                    this.stats.matchCounts[5]++;
-                    console.log(`✨ ULTRA MATCH (Size: ${groupSize})`);
-                } else if (groupSize === 4) {
-                    this.stats.matchCounts[4]++;
-                    console.log(`⭐ MATCH 4`);
-                } else if (groupSize === 3) {
-                    this.stats.matchCounts[3]++;
+
+            const size = group.length;
+            const blockDef = BlockRegistry.getById(typeId);
+            if (!blockDef) continue;
+
+            let action: SpecialAction = 'NONE';
+
+            if (size >= 5) {
+                action = blockDef.triggers.onMatch5;
+            } else if (size === 4) {
+                action = blockDef.triggers.onMatch4;
+            } else if (size === 3) {
+                action = blockDef.triggers.onMatch3;
+            }
+
+            if (action !== 'NONE') {
+                console.log(`⚡ Trigger: ${action} on ${blockDef.name} (Size: ${size})`);
+                
+                if (action === 'CREATE_SPECIAL') {
+                    this.createSpecialBlock(group, finalMatches);
+                } else {
+                    group.forEach(gIdx => this.executeSpecialAction(action, gIdx, finalMatches));
                 }
             }
         }
-        if (currentMaxGroup > this.lastMoveGroupSize) this.lastMoveGroupSize = currentMaxGroup;
+    }
+
+    private createSpecialBlock(groupIndices: number[], finalMatches: Set<number>) {
+        let targetIdx = groupIndices[0];
+        if (this.lastSwapTargetId !== -1 && groupIndices.includes(this.lastSwapTargetId)) {
+            targetIdx = this.lastSwapTargetId;
+        }
+
+        console.log(`✨ Creating Special Block at index ${targetIdx}`);
+
+        this.cells[targetIdx].typeId = SPECIAL_BLOCK_ID;
+        this.cells[targetIdx].state = CellState.IDLE;
+        
+        finalMatches.delete(targetIdx);
+    }
+
+    private executeSpecialAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
+        const col = originIdx % COLS;
+        const row = Math.floor(originIdx / COLS);
+
+        if (!targetSet.has(originIdx)) {
+            const originDef = BlockRegistry.getById(this.cells[originIdx].typeId);
+            if (!originDef || !originDef.isIndestructible) {
+                targetSet.add(originIdx);
+            }
+        }
+
+        switch (action) {
+            case 'EXPLODE_SMALL':
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = col + dx;
+                        const ny = row + dy;
+                        if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+                            const nIdx = nx + ny * COLS;
+                            if (this.cells[nIdx].typeId !== -1 && this.cells[nIdx].state !== CellState.FALLING && !targetSet.has(nIdx)) {
+                                
+                                const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
+                                if (targetDef && targetDef.isIndestructible) continue;
+
+                                targetSet.add(nIdx);
+
+                                const victim = this.cells[nIdx];
+                                const victimDef = BlockRegistry.getById(victim.typeId);
+                                if (victimDef && (victim.typeId === SPECIAL_BLOCK_ID || victimDef.triggers.onMatch3 !== 'NONE')) {
+                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) 
+                                        ? 'EXPLODE_BIG' 
+                                        : victimDef.triggers.onMatch3;
+                                        
+                                    if (reactionAction !== 'NONE') {
+                                        console.log(`💣 Chain Reaction from ${victimDef.name} at ${nIdx}`);
+                                        this.executeSpecialAction(reactionAction, nIdx, targetSet);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case 'EXPLODE_BIG':
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        const nx = col + dx;
+                        const ny = row + dy;
+                        if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+                            const nIdx = nx + ny * COLS;
+                            if (this.cells[nIdx].typeId !== -1 && this.cells[nIdx].state !== CellState.FALLING && !targetSet.has(nIdx)) {
+                                
+                                const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
+                                if (targetDef && targetDef.isIndestructible) continue;
+
+                                targetSet.add(nIdx);
+
+                                const victim = this.cells[nIdx];
+                                const victimDef = BlockRegistry.getById(victim.typeId);
+                                if (victimDef && (victim.typeId === SPECIAL_BLOCK_ID || victimDef.triggers.onMatch3 !== 'NONE')) {
+                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) 
+                                        ? 'EXPLODE_BIG' 
+                                        : victimDef.triggers.onMatch3;
+                                        
+                                    if (reactionAction !== 'NONE') {
+                                        console.log(`💣 Chain Reaction from ${victimDef.name} at ${nIdx}`);
+                                        this.executeSpecialAction(reactionAction, nIdx, targetSet);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case 'LINE_CLEAR_H':
+                for (let c = 0; c < COLS; c++) {
+                    const nIdx = c + row * COLS;
+                    if (this.cells[nIdx].typeId !== -1 && !targetSet.has(nIdx)) {
+                        const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
+                        if (targetDef && targetDef.isIndestructible) continue;
+                        targetSet.add(nIdx);
+                    }
+                }
+                break;
+
+            case 'LINE_CLEAR_V':
+                for (let r = 0; r < ROWS; r++) {
+                    const nIdx = col + r * COLS;
+                    if (this.cells[nIdx].typeId !== -1 && !targetSet.has(nIdx)) {
+                        const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
+                        if (targetDef && targetDef.isIndestructible) continue;
+                        targetSet.add(nIdx);
+                    }
+                }
+                break;
+
+            case 'MAGIC_BONUS':
+                this.comboTimer += 2.0; 
+                break;
+                
+            case 'CREATE_SPECIAL':
+                break;
+        }
+    }
+
+    private updateStats(finalMatches: Set<number>) {
+        let groupSize = finalMatches.size; 
+        if (groupSize > this.lastMoveGroupSize) this.lastMoveGroupSize = groupSize;
+
+        finalMatches.forEach(idx => {
+            const type = this.cells[idx].typeId;
+            if (this.statsEnabled && this.stats.colorClears[type] !== undefined) {
+                this.stats.colorClears[type]++;
+            }
+        });
+        
+        if (this.statsEnabled) {
+             if (groupSize >= 5) {
+                this.stats.matchCounts[5]++;
+                console.log(`✨ MASSIVE CLEAR (Size: ${groupSize})`);
+            } else if (groupSize === 4) {
+                this.stats.matchCounts[4]++;
+            } else if (groupSize === 3) {
+                this.stats.matchCounts[3]++;
+            }
+        }
     }
     
     public getLastMoveGroupSize(): number { return this.lastMoveGroupSize; }
 
     private checkMatchAt(idx: number): boolean { 
         const cell = this.cells[idx]; const type = cell.typeId; if (type === -1) return false;
+        
+        // --- ZMIANA: Sprawdzenie isMatchable ---
+        const def = BlockRegistry.getById(type);
+        if (!def || !def.isMatchable) return false;
+
         const col = idx % COLS; const row = Math.floor(idx / COLS);
         let countH = 1, i = 1; while (col-i>=0 && this.cells[idx-i].typeId===type && this.cells[idx-i].state===CellState.IDLE) { countH++; i++; }
         i=1; while(col+i<COLS && this.cells[idx+i].typeId===type && this.cells[idx+i].state===CellState.IDLE) { countH++; i++; }
@@ -395,6 +599,11 @@ export class BoardLogic {
         } return null;
     }
     private simulateSwap(idxA: number, idxB: number): boolean {
+        // --- ZMIANA: Sprawdzenie isSwappable dla AI/Hintów ---
+        const defA = BlockRegistry.getById(this.cells[idxA].typeId);
+        const defB = BlockRegistry.getById(this.cells[idxB].typeId);
+        if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) return false;
+
         const t = this.cells[idxA].typeId; this.cells[idxA].typeId = this.cells[idxB].typeId; this.cells[idxB].typeId = t;
         const h = this.checkMatchAt(idxA) || this.checkMatchAt(idxB);
         this.cells[idxB].typeId = this.cells[idxA].typeId; this.cells[idxA].typeId = t; return h;
