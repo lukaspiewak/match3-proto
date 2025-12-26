@@ -10,7 +10,7 @@ import { Button } from '../ui/Button';
 import { BlockView } from '../views/BlockView'; 
 import { 
     COLS, ROWS, TILE_SIZE, GAP, CellState, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme // Import motywu
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme 
 } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
@@ -76,23 +76,19 @@ export class GameScene extends PIXI.Container implements Scene {
         this.setupBoardBackground();
         this.setupUI();
         
-        this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
         this.gameManager.onGameFinished = (reason) => this.onGameFinished(reason);
     }
 
     private setupBoardBackground() {
         const boardBg = new PIXI.Graphics();
         boardBg.rect(-GAP, -GAP, (COLS * TILE_SIZE) + GAP, (ROWS * TILE_SIZE) + GAP);
-        // ZMIANA: Tło planszy z motywu
         boardBg.fill({ color: CurrentTheme.panelBg, alpha: 1.0 }); 
-        // boardBg.stroke({ width: 2, color: CurrentTheme.border }); // Opcjonalny border
         this.bgContainer.addChild(boardBg);
 
         for(let i=0; i<COLS * ROWS; i++) {
             const col = i % COLS; const row = Math.floor(i / COLS);
             const slot = new PIXI.Graphics();
             slot.rect(0, 0, TILE_SIZE - GAP, TILE_SIZE - GAP);
-            // ZMIANA: Kolor slotów z motywu
             slot.fill({ color: CurrentTheme.slotBg, alpha: 1.0 }); 
             slot.x = col * TILE_SIZE; slot.y = row * TILE_SIZE;
             this.bgContainer.addChild(slot);
@@ -115,14 +111,12 @@ export class GameScene extends PIXI.Container implements Scene {
 
         const timerBg = new PIXI.Graphics();
         timerBg.circle(0, 0, 30); 
-        // ZMIANA: Tło timera i akcent z motywu
         timerBg.fill({ color: CurrentTheme.panelBg });
         timerBg.stroke({ width: 3, color: CurrentTheme.accent }); 
         timerContainer.addChild(timerBg);
 
         this.timerValueText = new PIXI.Text({
             text: '0',
-            // ZMIANA: Kolor tekstu
             style: { fontFamily: 'Arial', fontSize: 24, fontWeight: 'bold', fill: CurrentTheme.textMain, align: 'center' }
         });
         this.timerValueText.anchor.set(0.5);
@@ -130,7 +124,6 @@ export class GameScene extends PIXI.Container implements Scene {
 
         this.timerLabel = new PIXI.Text({
             text: 'LIMIT',
-            // ZMIANA: Kolor wygaszony
             style: { fontFamily: 'Arial', fontSize: 10, fill: CurrentTheme.textMuted, align: 'center' }
         });
         this.timerLabel.anchor.set(0.5);
@@ -197,6 +190,32 @@ export class GameScene extends PIXI.Container implements Scene {
         this.gameManager.startGame();
         this.idleTime = 0;
         this.hintIndices = [];
+
+        // --- ZMIANA: PODPIĘCIE EVENTÓW ---
+        // Usuwamy stare listenery, żeby nie duplikować
+        this.logic.removeAllListeners(); 
+        
+        this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
+
+        this.logic.on('explode', (data: { id: number, typeId: number, x: number, y: number }) => {
+            const drawX = data.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+            const drawY = data.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+            const globalPos = this.boardContainer.toGlobal({x: drawX, y: drawY});
+            
+            const blockDef = BlockRegistry.getById(data.typeId);
+            this.particles.spawn(globalPos.x, globalPos.y, blockDef ? blockDef.color : 0xFFFFFF);
+            
+            // Punktacja
+            const currentId = this.gameManager.getCurrentPlayerId();
+            if (currentId === PLAYER_ID_1) this.scoreUI.addScore(data.typeId);
+            else if (currentId === PLAYER_ID_2) this.botScoreUI.addScore(data.typeId);
+            else this.scoreUI.addScore(data.typeId);
+
+            this.soundManager.playPop();
+            
+            if (navigator.vibrate) navigator.vibrate(20);
+            this.triggerShake(0.2, 5);
+        });
     }
 
     public update(delta: number) {
@@ -264,7 +283,7 @@ export class GameScene extends PIXI.Container implements Scene {
 
     private updateUI() {
         this.statusText.text = this.gameManager.gameStatusText;
-        if (this.gameManager.turnTimer < 5.0) this.statusText.style.fill = CurrentTheme.danger; // Zmiana na kolor ostrzegawczy
+        if (this.gameManager.turnTimer < 5.0) this.statusText.style.fill = CurrentTheme.danger; 
         else this.statusText.style.fill = CurrentTheme.textMain;
 
         if (AppConfig.limitMode === 'MOVES') {
@@ -294,33 +313,22 @@ export class GameScene extends PIXI.Container implements Scene {
 
             if (cell.typeId === -1) { sprite.visible = false; continue; }
 
-            const blockDef = BlockRegistry.getById(cell.typeId);
-
+            // ZMIANA: Usunięto logikę 'processed' i particles.spawn
+            // Teraz renderujemy tylko stan wizualny.
+            
             if (cell.state === CellState.EXPLODING) {
-                if (!(sprite as any).processed) {
-                    const globalPos = this.boardContainer.toGlobal({x: drawX, y: drawY});
-                    this.particles.spawn(globalPos.x, globalPos.y, blockDef.color);
-                    
-                    const currentId = this.gameManager.getCurrentPlayerId();
-                    if (currentId === PLAYER_ID_1) this.scoreUI.addScore(cell.typeId);
-                    else if (currentId === PLAYER_ID_2) this.botScoreUI.addScore(cell.typeId);
-                    else this.scoreUI.addScore(cell.typeId);
-
-                    this.soundManager.playPop();
-                    
-                    if (navigator.vibrate) navigator.vibrate(20);
-                    this.triggerShake(0.2, 5);
-
-                    (sprite as any).processed = true;
-                }
-                sprite.visible = true; sprite.x = drawX; sprite.y = drawY;
+                sprite.visible = true; 
+                sprite.x = drawX; 
+                sprite.y = drawY;
                 
-                // ZMIANA: Powrót do 15.0
-                const progress = Math.max(0, cell.timer / 15.0); 
+                // Używamy this.logic.EXPLOSION_TIME dla pewności, że pasuje do logiki
+                const progress = Math.max(0, cell.timer / this.logic.EXPLOSION_TIME); 
                 
-                sprite.scale.set(progress); sprite.alpha = progress; 
+                sprite.scale.set(progress); 
+                sprite.alpha = progress; 
+                sprite.updateVisuals(cell.typeId); // Upewnij się, że sprite wie jaki ma kolor
                 continue;
-            } else { (sprite as any).processed = false; }
+            }
 
             let scale = 1.0; let zIndex = 0; let alpha = 1.0;
             if (cell.state === CellState.SWAPPING) { zIndex = 10; }
@@ -360,7 +368,6 @@ export class GameScene extends PIXI.Container implements Scene {
     private onGameFinished(reason: string) {
         const overlay = new PIXI.Graphics();
         overlay.rect(0, 0, this.GAME_LOGICAL_WIDTH, this.GAME_LOGICAL_HEIGHT);
-        // ZMIANA: Tło overlayu
         overlay.fill({ color: 0x000000, alpha: 0.8 });
         this.addChild(overlay); 
         

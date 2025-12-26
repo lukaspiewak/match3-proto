@@ -1,3 +1,4 @@
+import { EventEmitter } from 'pixi.js'; // POPRAWKA: Bezpośredni import
 import { 
     COLS, ROWS, CellState, type Cell, 
     type GravityDir, 
@@ -6,7 +7,6 @@ import {
 import { Random } from './Random';
 import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
 import { GridPhysics } from './core/GridPhysics';
-// NOWOŚĆ: Import Managera Akcji
 import { ActionManager } from './actions/ActionManager';
 
 export interface MoveResult {
@@ -24,10 +24,10 @@ export interface GameStats {
     colorClears: { [typeId: number]: number };
 }
 
-export class BoardLogic {
+// ZMIANA: Dziedziczymy bezpośrednio po EventEmitter
+export class BoardLogic extends EventEmitter {
     public cells: Cell[];
     private physics: GridPhysics;
-    // NOWOŚĆ: Instancja ActionManager
     private actionManager: ActionManager;
 
     public needsMatchCheck: boolean = false;
@@ -49,6 +49,8 @@ export class BoardLogic {
     private lastSwapTargetId: number = -1;
 
     constructor() {
+        super(); // Init EventEmitter
+        
         this.stats = {
             totalMoves: 0, invalidMoves: 0, totalThinkingTime: 0,
             highestCascade: 0, matchCounts: { 3: 0, 4: 0, 5: 0 }, 
@@ -58,7 +60,6 @@ export class BoardLogic {
 
         this.cells = [];
         this.physics = new GridPhysics(this.cells);
-        // Inicjalizacja Managera Akcji
         this.actionManager = new ActionManager();
         
         this.physics.onNeedsMatchCheck = () => {
@@ -68,9 +69,7 @@ export class BoardLogic {
         this.physics.onDropDown = (id) => {
             const def = BlockRegistry.getById(this.cells[id].typeId);
             if (def && def.triggers.onDropDown !== 'NONE') {
-                // DELEGACJA DO ACTION MANAGER
                 this.runAction(def.triggers.onDropDown, id, new Set([id]));
-                
                 if (this.cells[id].state !== CellState.IDLE) {
                     this.needsMatchCheck = false;
                 }
@@ -246,6 +245,11 @@ export class BoardLogic {
             const finalMatches = new Set(initialMatches);
             this.processMatchEffects(initialMatches, finalMatches);
             this.currentCascadeDepth++;
+            
+            if (this.currentCascadeDepth > 1) {
+                // this.emit('cascade', this.currentCascadeDepth);
+            }
+
             if (this.currentCascadeDepth > 1 && this.statsEnabled) {
                 if (this.currentCascadeDepth > this.stats.highestCascade) this.stats.highestCascade = this.currentCascadeDepth;
                 console.log(`🌊 Cascade Depth: ${this.currentCascadeDepth}`);
@@ -259,6 +263,13 @@ export class BoardLogic {
                 if (cell.state !== CellState.EXPLODING) {
                     cell.state = CellState.EXPLODING;
                     cell.timer = this.EXPLOSION_TIME;
+                    
+                    this.emit('explode', { 
+                        id: cell.id, 
+                        typeId: cell.typeId, 
+                        x: cell.x, 
+                        y: cell.y 
+                    });
                 }
             });
         }
@@ -300,7 +311,6 @@ export class BoardLogic {
                 console.log(`⚡ Trigger: ${action} on ${blockDef.name} (Size: ${size})`);
                 if (action === 'CREATE_SPECIAL') this.createSpecialBlock(group, finalMatches);
                 else {
-                    // DELEGACJA DO ACTION MANAGER
                     group.forEach(gIdx => this.runAction(action, gIdx, finalMatches));
                 }
             }
@@ -318,27 +328,16 @@ export class BoardLogic {
         finalMatches.delete(targetIdx);
     }
 
-    // Nowa metoda pomocnicza, która zastępuje executeSpecialAction
     private runAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
-        // Zawsze dodajemy źródło do zniszczenia (chyba że strategia zdecyduje inaczej, 
-        // ale domyślnie chcemy zniszczyć klocek, który wywołał akcję).
-        // W poprzedniej wersji robiliśmy to w executeSpecialAction. 
-        // Tutaj możemy to zrobić przed delegacją lub w każdej strategii.
-        // Dla czystości, zrobimy to "przed", ale z uwzględnieniem indestructible.
-        
         if (!targetSet.has(originIdx)) {
             const originDef = BlockRegistry.getById(this.cells[originIdx].typeId);
             if (!originDef || !originDef.isIndestructible) {
                 targetSet.add(originIdx);
             }
         }
-
-        // Uruchomienie strategii
         this.actionManager.execute(action, originIdx, this, targetSet);
     }
 
-    // updateStats, getLastMoveGroupSize, checkMatchAt, findHint, simulateSwap, findDeadlockFix - bez zmian
-    
     private updateStats(finalMatches: Set<number>) {
         let groupSize = finalMatches.size; 
         if (groupSize > this.lastMoveGroupSize) this.lastMoveGroupSize = groupSize;
