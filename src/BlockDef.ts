@@ -65,7 +65,7 @@ export class BlockRegistry {
         const specialBlock = new BlockDefinition(
             SPECIAL_BLOCK_ID, "Rainbow Star", 0xFFFFFF, 0x000000, '★', 'block_special', 0, "Moc",
             { onMatch3: 'EXPLODE_BIG', onMatch4: 'EXPLODE_BIG', onMatch5: 'EXPLODE_BIG' },
-            false, true, true 
+            true, true, false 
         );
         this.blocks[SPECIAL_BLOCK_ID] = specialBlock;
 
