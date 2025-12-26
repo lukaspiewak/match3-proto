@@ -1,4 +1,4 @@
-import { EventEmitter } from 'pixi.js'; // POPRAWKA: Bezpośredni import
+import { EventEmitter } from 'pixi.js';
 import { 
     COLS, ROWS, CellState, type Cell, 
     type GravityDir, 
@@ -6,7 +6,11 @@ import {
 } from './Config';
 import { Random } from './Random';
 import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
+
+// Importy Podsystemów
 import { GridPhysics } from './core/GridPhysics';
+import { MatchEngine } from './core/MatchEngine';
+import { HintSystem } from './core/HintSystem';
 import { ActionManager } from './actions/ActionManager';
 
 export interface MoveResult {
@@ -24,32 +28,27 @@ export interface GameStats {
     colorClears: { [typeId: number]: number };
 }
 
-// ZMIANA: Dziedziczymy bezpośrednio po EventEmitter
 export class BoardLogic extends EventEmitter {
     public cells: Cell[];
+    public stats: GameStats;
+    
+    // Podsystemy
     private physics: GridPhysics;
+    private matchEngine: MatchEngine;
+    private hintSystem: HintSystem;
     private actionManager: ActionManager;
 
     public needsMatchCheck: boolean = false;
     public statsEnabled: boolean = false; 
+    public readonly EXPLOSION_TIME = 15.0; // Używane przez widok
 
-    public readonly EXPLOSION_TIME = 15.0; 
-
+    // Callbacki
     public onBadMove: (() => void) | null = null;
     
-    public currentCombo: number = 0;
-    public bestCombo: number = 0;       
-    public comboTimer: number = 0;      
-
-    public stats: GameStats;
-    private currentCascadeDepth: number = 0;
     private currentThinkingTime: number = 0; 
 
-    private lastMoveGroupSize: number = 0;
-    private lastSwapTargetId: number = -1;
-
     constructor() {
-        super(); // Init EventEmitter
+        super();
         
         this.stats = {
             totalMoves: 0, invalidMoves: 0, totalThinkingTime: 0,
@@ -59,12 +58,15 @@ export class BoardLogic extends EventEmitter {
         for(let i=0; i < AppConfig.blockTypes; i++) this.stats.colorClears[i] = 0;
 
         this.cells = [];
-        this.physics = new GridPhysics(this.cells);
-        this.actionManager = new ActionManager();
         
-        this.physics.onNeedsMatchCheck = () => {
-            this.needsMatchCheck = true;
-        };
+        // Inicjalizacja Podsystemów
+        this.actionManager = new ActionManager();
+        this.physics = new GridPhysics(this.cells);
+        this.matchEngine = new MatchEngine(this); // Przekazujemy 'this' jako kontekst
+        this.hintSystem = new HintSystem(this, this.matchEngine);
+        
+        // Konfiguracja Fizyki
+        this.physics.onNeedsMatchCheck = () => { this.needsMatchCheck = true; };
         
         this.physics.onDropDown = (id) => {
             const def = BlockRegistry.getById(this.cells[id].typeId);
@@ -79,17 +81,51 @@ export class BoardLogic extends EventEmitter {
         this.initBoard();
     }
 
+    // --- Publiczne API (Proxies) ---
+    // Udostępniamy właściwości z MatchEngine dla GameManager/UI
+    public get currentCombo() { return this.matchEngine.currentCombo; }
+    public set currentCombo(v) { this.matchEngine.currentCombo = v; }
+    
+    public get comboTimer() { return this.matchEngine.comboTimer; }
+    public set comboTimer(v) { this.matchEngine.comboTimer = v; }
+
+    public get bestCombo() { return this.matchEngine.bestCombo; }
+    
+    public getLastMoveGroupSize() { return this.matchEngine.lastMoveGroupSize; }
+
     public setGravity(direction: GravityDir) {
         this.physics.setGravity(direction);
+    }
+
+    public findHint() { return this.hintSystem.findHint(); }
+    public findDeadlockFix() { return this.hintSystem.findDeadlockFix(); }
+
+    // --- Główna Pętla ---
+
+    public update(delta: number) {
+        const dt = delta / 60.0;
+
+        // Aktualizacja logiki Match (timery combo)
+        this.matchEngine.update(dt);
+
+        if (this.statsEnabled && !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE)) {
+            this.currentThinkingTime += dt;
+        }
+
+        // Aktualizacja Fizyki
+        this.updateTimers(delta);
+        this.physics.update(delta);
+
+        if (this.needsMatchCheck) {
+            this.matchEngine.scanForMatches(); // Delegacja
+            this.needsMatchCheck = false;
+        }
     }
 
     public initBoard() {
         this.setGravity(AppConfig.gravityDir);
         this.cells.length = 0;
-        this.currentCombo = 0;
-        this.bestCombo = 0;
-        this.comboTimer = 0;
-        this.currentCascadeDepth = 0;
+        this.matchEngine.reset();
         this.currentThinkingTime = 0;
 
         for (let i = 0; i < COLS * ROWS; i++) {
@@ -111,38 +147,9 @@ export class BoardLogic extends EventEmitter {
         }
     }
 
-    public update(delta: number) {
-        const dt = delta / 60.0;
-
-        if (AppConfig.comboMode === 'TIME' && this.currentCombo > 0) {
-            const isBoardBusy = !this.cells.every(c => c.state === CellState.IDLE);
-            const shouldPause = (AppConfig.gameMode !== 'SOLO' && isBoardBusy);
-
-            if (!shouldPause) {
-                this.comboTimer -= dt; 
-                if (this.comboTimer <= 0) {
-                    this.comboTimer = 0;
-                    this.currentCombo = 0; 
-                }
-            }
-        }
-
-        if (this.statsEnabled && !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE)) {
-            this.currentThinkingTime += dt;
-        }
-
-        this.updateTimers(delta);
-        this.physics.update(delta);
-
-        if (this.needsMatchCheck) {
-            this.detectMatches();
-            this.needsMatchCheck = false;
-        }
-    }
-
     public trySwap(idxA: number, dirX: number, dirY: number): MoveResult {
         const result: MoveResult = { success: false, causedMatch: false, maxGroupSize: 0 };
-        this.lastMoveGroupSize = 0;
+        this.matchEngine.lastMoveGroupSize = 0; // Reset stats
 
         const col = idxA % COLS; const row = Math.floor(idxA / COLS);
         const targetCol = col + dirX; const targetRow = row + dirY;
@@ -164,17 +171,21 @@ export class BoardLogic extends EventEmitter {
             this.stats.totalThinkingTime += this.currentThinkingTime;
         }
         this.currentThinkingTime = 0; 
-        this.currentCascadeDepth = 0;
+        this.matchEngine.currentCascadeDepth = 0;
 
-        if (AppConfig.comboMode === 'MOVE') this.currentCombo = 0;
+        if (AppConfig.comboMode === 'MOVE') this.matchEngine.currentCombo = 0;
 
-        this.lastSwapTargetId = idxB;
+        // Przekazanie celu ruchu do silnika (dla specjala)
+        this.matchEngine.lastSwapTargetId = idxB;
 
+        // Zamiana
         const tempType = cellA.typeId; cellA.typeId = cellB.typeId; cellB.typeId = tempType;
         const tempX = cellA.x; const tempY = cellA.y;
         cellA.x = cellB.x; cellA.y = cellB.y; cellB.x = tempX; cellB.y = tempY;
 
-        const matchA = this.checkMatchAt(idxA); const matchB = this.checkMatchAt(idxB);
+        // Sprawdzenie (używając MatchEngine)
+        const matchA = this.matchEngine.checkMatchAt(idxA); 
+        const matchB = this.matchEngine.checkMatchAt(idxB);
        
        if (matchA || matchB) {
             if (this.statsEnabled) {
@@ -191,11 +202,22 @@ export class BoardLogic extends EventEmitter {
                 console.log(`❌ Invalid Player Move`);
             }
             cellB.typeId = cellA.typeId; cellA.typeId = tempType;
-            this.lastSwapTargetId = -1; 
+            this.matchEngine.lastSwapTargetId = -1; 
             if (this.onBadMove) this.onBadMove();
             result.success = false;
         }
         return result;
+    }
+
+    // Metoda pomocnicza dla ActionManagera i MatchEngine
+    public runAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
+        if (!targetSet.has(originIdx)) {
+            const originDef = BlockRegistry.getById(this.cells[originIdx].typeId);
+            if (!originDef || !originDef.isIndestructible) {
+                targetSet.add(originIdx);
+            }
+        }
+        this.actionManager.execute(action, originIdx, this, targetSet);
     }
 
     private updateTimers(delta: number) {
@@ -208,194 +230,5 @@ export class BoardLogic extends EventEmitter {
                 }
             }
         }
-    }
-
-    public detectMatches() {
-        const initialMatches = new Set<number>();
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS - 2; c++) {
-                const idx = c + r * COLS;
-                const type = this.cells[idx].typeId;
-                const def = BlockRegistry.getById(type);
-                if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
-                let matchLen = 1;
-                while (c + matchLen < COLS && this.cells[c + matchLen + r * COLS].typeId === type && this.cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
-                if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) initialMatches.add((c + k) + r * COLS);
-                    c += matchLen - 1;
-                }
-            }
-        }
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS - 2; r++) {
-                const idx = c + r * COLS;
-                const type = this.cells[idx].typeId;
-                const def = BlockRegistry.getById(type);
-                if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
-                let matchLen = 1;
-                while (r + matchLen < ROWS && this.cells[c + (r + matchLen) * COLS].typeId === type && this.cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
-                if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) initialMatches.add(c + (r + k) * COLS);
-                    r += matchLen - 1;
-                }
-            }
-        }
-        
-        if (initialMatches.size > 0) {
-            const finalMatches = new Set(initialMatches);
-            this.processMatchEffects(initialMatches, finalMatches);
-            this.currentCascadeDepth++;
-            
-            if (this.currentCascadeDepth > 1) {
-                // this.emit('cascade', this.currentCascadeDepth);
-            }
-
-            if (this.currentCascadeDepth > 1 && this.statsEnabled) {
-                if (this.currentCascadeDepth > this.stats.highestCascade) this.stats.highestCascade = this.currentCascadeDepth;
-                console.log(`🌊 Cascade Depth: ${this.currentCascadeDepth}`);
-            }
-            this.updateStats(finalMatches);
-            this.currentCombo++;
-            if (AppConfig.comboMode === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
-            
-            finalMatches.forEach(idx => {
-                const cell = this.cells[idx];
-                if (cell.state !== CellState.EXPLODING) {
-                    cell.state = CellState.EXPLODING;
-                    cell.timer = this.EXPLOSION_TIME;
-                    
-                    this.emit('explode', { 
-                        id: cell.id, 
-                        typeId: cell.typeId, 
-                        x: cell.x, 
-                        y: cell.y 
-                    });
-                }
-            });
-        }
-    }
-
-    private processMatchEffects(initialMatches: Set<number>, finalMatches: Set<number>) {
-        const visited = new Set<number>();
-        const indices = Array.from(initialMatches);
-        for (const idx of indices) {
-            if (visited.has(idx)) continue;
-            const typeId = this.cells[idx].typeId;
-            const group = [idx];
-            const stack = [idx];
-            visited.add(idx);
-            while (stack.length > 0) {
-                const current = stack.pop()!;
-                const c = current % COLS; const r = Math.floor(current / COLS);
-                const neighbors = [{c:c+1,r:r}, {c:c-1,r:r}, {c:c,r:r+1}, {c:c,r:r-1}];
-                for (const n of neighbors) {
-                    if (n.c >= 0 && n.c < COLS && n.r >= 0 && n.r < ROWS) {
-                        const nIdx = n.c + n.r * COLS;
-                        if (initialMatches.has(nIdx) && !visited.has(nIdx)) {
-                            if (this.cells[nIdx].typeId === typeId) {
-                                visited.add(nIdx); stack.push(nIdx); group.push(nIdx);
-                            }
-                        }
-                    }
-                }
-            }
-            const size = group.length;
-            const blockDef = BlockRegistry.getById(typeId);
-            if (!blockDef) continue;
-            let action: SpecialAction = 'NONE';
-            if (size >= 5) action = blockDef.triggers.onMatch5;
-            else if (size === 4) action = blockDef.triggers.onMatch4;
-            else if (size === 3) action = blockDef.triggers.onMatch3;
-
-            if (action !== 'NONE') {
-                console.log(`⚡ Trigger: ${action} on ${blockDef.name} (Size: ${size})`);
-                if (action === 'CREATE_SPECIAL') this.createSpecialBlock(group, finalMatches);
-                else {
-                    group.forEach(gIdx => this.runAction(action, gIdx, finalMatches));
-                }
-            }
-        }
-    }
-
-    private createSpecialBlock(groupIndices: number[], finalMatches: Set<number>) {
-        let targetIdx = groupIndices[0];
-        if (this.lastSwapTargetId !== -1 && groupIndices.includes(this.lastSwapTargetId)) {
-            targetIdx = this.lastSwapTargetId;
-        }
-        console.log(`✨ Creating Special Block at index ${targetIdx}`);
-        this.cells[targetIdx].typeId = SPECIAL_BLOCK_ID;
-        this.cells[targetIdx].state = CellState.IDLE;
-        finalMatches.delete(targetIdx);
-    }
-
-    private runAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
-        if (!targetSet.has(originIdx)) {
-            const originDef = BlockRegistry.getById(this.cells[originIdx].typeId);
-            if (!originDef || !originDef.isIndestructible) {
-                targetSet.add(originIdx);
-            }
-        }
-        this.actionManager.execute(action, originIdx, this, targetSet);
-    }
-
-    private updateStats(finalMatches: Set<number>) {
-        let groupSize = finalMatches.size; 
-        if (groupSize > this.lastMoveGroupSize) this.lastMoveGroupSize = groupSize;
-        finalMatches.forEach(idx => {
-            const type = this.cells[idx].typeId;
-            if (this.statsEnabled && this.stats.colorClears[type] !== undefined) this.stats.colorClears[type]++;
-        });
-        if (this.statsEnabled) {
-             if (groupSize >= 5) {
-                this.stats.matchCounts[5]++;
-                console.log(`✨ MASSIVE CLEAR (Size: ${groupSize})`);
-            } else if (groupSize === 4) {
-                this.stats.matchCounts[4]++;
-            } else if (groupSize === 3) {
-                this.stats.matchCounts[3]++;
-            }
-        }
-    }
-    
-    public getLastMoveGroupSize(): number { return this.lastMoveGroupSize; }
-
-    private checkMatchAt(idx: number): boolean { 
-        const cell = this.cells[idx]; const type = cell.typeId; if (type === -1) return false;
-        const def = BlockRegistry.getById(type);
-        if (!def || !def.isMatchable) return false;
-        const col = idx % COLS; const row = Math.floor(idx / COLS);
-        let countH = 1, i = 1; while (col-i>=0 && this.cells[idx-i].typeId===type && this.cells[idx-i].state===CellState.IDLE) { countH++; i++; }
-        i=1; while(col+i<COLS && this.cells[idx+i].typeId===type && this.cells[idx+i].state===CellState.IDLE) { countH++; i++; }
-        if (countH>=3) return true;
-        let countV = 1; i=1; while(row-i>=0 && this.cells[idx-i*COLS].typeId===type && this.cells[idx-i*COLS].state===CellState.IDLE) { countV++; i++; }
-        i=1; while(row+i<ROWS && this.cells[idx+i*COLS].typeId===type && this.cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
-        if (countV>=3) return true; return false;
-    }
-
-    public findHint(): number[] | null {
-        if (!this.cells.every(c => c.state === CellState.IDLE)) return null;
-        for (let idx = 0; idx < this.cells.length; idx++) {
-            const cell = this.cells[idx]; if (cell.typeId === -1) continue;
-            const col = idx % COLS; const row = Math.floor(idx / COLS);
-            if (col < COLS - 1) { const rI = idx + 1; if (this.cells[rI].typeId!==-1 && this.simulateSwap(idx,rI)) return [idx,rI]; }
-            if (row < ROWS - 1) { const dI = idx + COLS; if (this.cells[dI].typeId!==-1 && this.simulateSwap(idx,dI)) return [idx,dI]; }
-        } return null;
-    }
-    private simulateSwap(idxA: number, idxB: number): boolean {
-        const defA = BlockRegistry.getById(this.cells[idxA].typeId);
-        const defB = BlockRegistry.getById(this.cells[idxB].typeId);
-        if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) return false;
-        const t = this.cells[idxA].typeId; this.cells[idxA].typeId = this.cells[idxB].typeId; this.cells[idxB].typeId = t;
-        const h = this.checkMatchAt(idxA) || this.checkMatchAt(idxB);
-        this.cells[idxB].typeId = this.cells[idxA].typeId; this.cells[idxA].typeId = t; return h;
-    }
-    public findDeadlockFix(): { id: number, targetType: number } | null {
-        for (let i = 0; i < this.cells.length; i++) {
-            const o = this.cells[i].typeId; if (o === -1) continue;
-            for (let t = 0; t < AppConfig.blockTypes; t++) {
-                if (t === o) continue; this.cells[i].typeId = t;
-                if (this.findHint() !== null) { this.cells[i].typeId = o; return { id: i, targetType: t }; }
-            } this.cells[i].typeId = o;
-        } return null;
     }
 }
