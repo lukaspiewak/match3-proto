@@ -314,7 +314,10 @@ export class GameScene extends PIXI.Container implements Scene {
                     (sprite as any).processed = true;
                 }
                 sprite.visible = true; sprite.x = drawX; sprite.y = drawY;
-                const progress = Math.max(0, cell.timer / 15.0); 
+                
+                // ZMIANA: Dopasowanie animacji do krótszego czasu wybuchu (5.0)
+                const progress = Math.max(0, cell.timer / 5.0); 
+                
                 sprite.scale.set(progress); sprite.alpha = progress; 
                 continue;
             } else { (sprite as any).processed = false; }

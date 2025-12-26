@@ -26,10 +26,11 @@ export class BoardLogic {
     public needsMatchCheck: boolean = false;
     public statsEnabled: boolean = false; 
 
-    private readonly SWAP_SPEED = 0.20;
-    private readonly GRAVITY_ACCEL = 0.008;
-    private readonly MAX_SPEED = 0.6;
-    private readonly EXPLOSION_TIME = 15.0; 
+    // --- FIZYKA "SNAPPY" ---
+    private readonly SWAP_SPEED = 0.25;      
+    private readonly GRAVITY_ACCEL = 0.01;   
+    private readonly MAX_SPEED = 0.3;        
+    public readonly EXPLOSION_TIME = 5.0; 
 
     private dirX: number = 0;
     private dirY: number = 0;
@@ -145,7 +146,6 @@ export class BoardLogic {
         
         if (cellA.state !== CellState.IDLE || cellB.state !== CellState.IDLE) return result;
 
-        // --- ZMIANA: Sprawdzenie czy klocki można przesuwać (isSwappable) ---
         const defA = BlockRegistry.getById(cellA.typeId);
         const defB = BlockRegistry.getById(cellB.typeId);
         if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) {
@@ -206,11 +206,15 @@ export class BoardLogic {
         const isVertical = (this.dirY !== 0);
         const primarySize = isVertical ? COLS : ROWS;
         const secondarySize = isVertical ? ROWS : COLS;
+        
         for (let p = 0; p < primarySize; p++) {
             let emptySlots = 0;
+            // Kierunek skanowania (od dołu czy od góry) zależy od grawitacji
             let start = (this.dirX > 0 || this.dirY > 0) ? secondarySize - 1 : 0;
             let end = (this.dirX > 0 || this.dirY > 0) ? -1 : secondarySize;
             let step = (this.dirX > 0 || this.dirY > 0) ? -1 : 1;
+            
+            // 1. Przesuwanie istniejących bloków
             for (let s = start; s !== end; s += step) {
                 const col = isVertical ? p : s;
                 const row = isVertical ? s : p;
@@ -222,17 +226,28 @@ export class BoardLogic {
                     const targetRow = row + (this.dirY * emptySlots);
                     const targetIdx = targetCol + targetRow * COLS;
                     const targetCell = this.cells[targetIdx];
-                    targetCell.typeId = cell.typeId; targetCell.state = CellState.FALLING;
-                    targetCell.x = cell.x; targetCell.y = cell.y;
+                    targetCell.typeId = cell.typeId; 
+                    targetCell.state = CellState.FALLING;
+                    
+                    // Zachowujemy pęd
+                    targetCell.x = cell.x; 
+                    targetCell.y = cell.y;
                     targetCell.velocity = cell.velocity;
-                    targetCell.targetX = targetCol; targetCell.targetY = targetRow;
-                    cell.typeId = -1; cell.state = CellState.IDLE;
+                    
+                    targetCell.targetX = targetCol; 
+                    targetCell.targetY = targetRow;
+                    
+                    cell.typeId = -1; 
+                    cell.state = CellState.IDLE;
                 }
             }
+            
+            // 2. Generowanie nowych bloków ("Spawn Train")
             for (let i = 0; i < emptySlots; i++) {
                 let logicalS;
                 if (this.dirX > 0 || this.dirY > 0) { logicalS = emptySlots - 1 - i; } 
                 else { logicalS = (secondarySize - emptySlots) + i; }
+                
                 const finalCol = isVertical ? p : logicalS;
                 const finalRow = isVertical ? logicalS : p;
                 const idx = finalCol + finalRow * COLS;
@@ -243,8 +258,37 @@ export class BoardLogic {
                 cell.targetX = finalCol;
                 cell.targetY = finalRow;
                 cell.velocity = 0;
-                cell.x = finalCol - (this.dirX * (i + 2));
-                cell.y = finalRow - (this.dirY * (i + 2));
+
+                // --- NOWA LOGIKA POZYCJONOWANIA (Spawn Queue) ---
+                // Ustawiamy klocki w "pociąg" tuż za krawędzią planszy.
+                // i=0 to klocek, który wchodzi na planszę najgłębiej (jest pierwszy w kolejce)
+                // więc przy spawnie powinien być najbliżej krawędzi.
+                let spawnX = finalCol;
+                let spawnY = finalRow;
+
+                // Jeśli grawitacja w dół (dirY=1), spawnujemy nad planszą (Y < 0).
+                // i=0 -> offset=1 -> y=-1
+                // i=1 -> offset=2 -> y=-2
+                if (this.dirY === 1) {
+                    spawnY = -(i + 1);
+                } 
+                // Jeśli grawitacja w górę (dirY=-1), spawnujemy pod planszą.
+                // i=0 (ten co leci na górę) -> powinien być najbliżej dołu -> offset=1 -> y=ROWS
+                else if (this.dirY === -1) {
+                    // Tutaj logika jest odwrócona przez pętlę logiczną S.
+                    // Dla UP: emptySlots są na dole. i=0 to najwyższy pusty slot (daleko od źródła).
+                    // więc on powinien być dalej w kolejce.
+                    spawnY = ROWS + (emptySlots - i);
+                } 
+                else if (this.dirX === 1) {
+                    spawnX = -(i + 1);
+                } 
+                else if (this.dirX === -1) {
+                    spawnX = COLS + (emptySlots - i);
+                }
+
+                cell.x = spawnX;
+                cell.y = spawnY;
             }
         }
     }
@@ -256,17 +300,21 @@ export class BoardLogic {
             if (cell.state === CellState.FALLING) {
                 cell.velocity += this.GRAVITY_ACCEL * delta;
                 if (cell.velocity > this.MAX_SPEED) cell.velocity = this.MAX_SPEED;
+                
                 cell.x += this.dirX * cell.velocity * delta;
                 cell.y += this.dirY * cell.velocity * delta;
+                
                 let landed = false;
                 
+                // Uproszczona, ale bezpieczniejsza detekcja lądowania
                 if (this.dirX === 1 && cell.x >= cell.targetX) landed = true;
                 else if (this.dirX === -1 && cell.x <= cell.targetX) landed = true;
                 else if (this.dirY === 1 && cell.y >= cell.targetY) landed = true;
                 else if (this.dirY === -1 && cell.y <= cell.targetY) landed = true;
                 
                 if (landed) {
-                    cell.x = cell.targetX; cell.y = cell.targetY;
+                    cell.x = cell.targetX; 
+                    cell.y = cell.targetY;
                     cell.velocity = 0; 
                     cell.state = CellState.IDLE;
                     this.needsMatchCheck = true;
@@ -284,20 +332,29 @@ export class BoardLogic {
             } else if (cell.state === CellState.SWAPPING) {
                 const diffX = cell.targetX - cell.x;
                 const diffY = cell.targetY - cell.y;
-                cell.x += diffX * this.SWAP_SPEED * delta;
-                cell.y += diffY * this.SWAP_SPEED * delta;
-                if (Math.abs(diffX) < 0.05 && Math.abs(diffY) < 0.05) {
-                    cell.x = cell.targetX; cell.y = cell.targetY;
-                    cell.state = CellState.IDLE; this.needsMatchCheck = true;
+                
+                const moveAmount = this.SWAP_SPEED * delta;
+                
+                if (Math.abs(diffX) <= moveAmount) cell.x = cell.targetX;
+                else cell.x += Math.sign(diffX) * moveAmount;
+
+                if (Math.abs(diffY) <= moveAmount) cell.y = cell.targetY;
+                else cell.y += Math.sign(diffY) * moveAmount;
+
+                if (cell.x === cell.targetX && cell.y === cell.targetY) {
+                    cell.state = CellState.IDLE; 
+                    this.needsMatchCheck = true;
                 }
             } else if (cell.state === CellState.IDLE) {
                 const diffX = cell.targetX - cell.x;
                 const diffY = cell.targetY - cell.y;
                 if (Math.abs(diffX) > 0.001 || Math.abs(diffY) > 0.001) {
-                    if (Math.abs(diffX) > 0.01 || Math.abs(diffY) > 0.01) {
-                        cell.x += diffX * this.SWAP_SPEED * delta;
-                        cell.y += diffY * this.SWAP_SPEED * delta;
-                    } else { cell.x = cell.targetX; cell.y = cell.targetY; }
+                    cell.x += diffX * this.SWAP_SPEED * delta;
+                    cell.y += diffY * this.SWAP_SPEED * delta;
+                    if (Math.abs(diffX) < 0.01 && Math.abs(diffY) < 0.01) {
+                        cell.x = cell.targetX; 
+                        cell.y = cell.targetY;
+                    }
                 }
             }
         }
@@ -311,7 +368,6 @@ export class BoardLogic {
                 const idx = c + r * COLS;
                 const type = this.cells[idx].typeId;
                 
-                // --- ZMIANA: Sprawdzenie isMatchable ---
                 const def = BlockRegistry.getById(type);
                 if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
                 
@@ -330,7 +386,6 @@ export class BoardLogic {
                 const idx = c + r * COLS;
                 const type = this.cells[idx].typeId;
                 
-                // --- ZMIANA: Sprawdzenie isMatchable ---
                 const def = BlockRegistry.getById(type);
                 if (type === -1 || this.cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
                 
@@ -576,7 +631,6 @@ export class BoardLogic {
     private checkMatchAt(idx: number): boolean { 
         const cell = this.cells[idx]; const type = cell.typeId; if (type === -1) return false;
         
-        // --- ZMIANA: Sprawdzenie isMatchable ---
         const def = BlockRegistry.getById(type);
         if (!def || !def.isMatchable) return false;
 
@@ -599,7 +653,6 @@ export class BoardLogic {
         } return null;
     }
     private simulateSwap(idxA: number, idxB: number): boolean {
-        // --- ZMIANA: Sprawdzenie isSwappable dla AI/Hintów ---
         const defA = BlockRegistry.getById(this.cells[idxA].typeId);
         const defB = BlockRegistry.getById(this.cells[idxB].typeId);
         if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) return false;
