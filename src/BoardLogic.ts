@@ -5,8 +5,9 @@ import {
 } from './Config';
 import { Random } from './Random';
 import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
-// Import nowej fizyki
 import { GridPhysics } from './core/GridPhysics';
+// NOWOŚĆ: Import Managera Akcji
+import { ActionManager } from './actions/ActionManager';
 
 export interface MoveResult {
     success: boolean;       
@@ -25,13 +26,13 @@ export interface GameStats {
 
 export class BoardLogic {
     public cells: Cell[];
-    // Fizyka w osobnym module
     private physics: GridPhysics;
+    // NOWOŚĆ: Instancja ActionManager
+    private actionManager: ActionManager;
 
     public needsMatchCheck: boolean = false;
     public statsEnabled: boolean = false; 
 
-    // PRZYWRÓCONO: Dłuższy czas wybuchu (pasuje do wolniejszej fizyki)
     public readonly EXPLOSION_TIME = 15.0; 
 
     public onBadMove: (() => void) | null = null;
@@ -56,11 +57,10 @@ export class BoardLogic {
         for(let i=0; i < AppConfig.blockTypes; i++) this.stats.colorClears[i] = 0;
 
         this.cells = [];
-        
-        // Inicjalizacja fizyki z przekazaniem referencji do cells
         this.physics = new GridPhysics(this.cells);
+        // Inicjalizacja Managera Akcji
+        this.actionManager = new ActionManager();
         
-        // Podpięcie callbacków
         this.physics.onNeedsMatchCheck = () => {
             this.needsMatchCheck = true;
         };
@@ -68,7 +68,9 @@ export class BoardLogic {
         this.physics.onDropDown = (id) => {
             const def = BlockRegistry.getById(this.cells[id].typeId);
             if (def && def.triggers.onDropDown !== 'NONE') {
-                this.executeSpecialAction(def.triggers.onDropDown, id, new Set([id]));
+                // DELEGACJA DO ACTION MANAGER
+                this.runAction(def.triggers.onDropDown, id, new Set([id]));
+                
                 if (this.cells[id].state !== CellState.IDLE) {
                     this.needsMatchCheck = false;
                 }
@@ -84,7 +86,6 @@ export class BoardLogic {
 
     public initBoard() {
         this.setGravity(AppConfig.gravityDir);
-
         this.cells.length = 0;
         this.currentCombo = 0;
         this.bestCombo = 0;
@@ -92,7 +93,6 @@ export class BoardLogic {
         this.currentCascadeDepth = 0;
         this.currentThinkingTime = 0;
 
-        // Inicjalizacja planszy
         for (let i = 0; i < COLS * ROWS; i++) {
             const col = i % COLS;
             const row = Math.floor(i / COLS);
@@ -133,8 +133,6 @@ export class BoardLogic {
         }
 
         this.updateTimers(delta);
-        
-        // Delegacja logiki ruchu do GridPhysics
         this.physics.update(delta);
 
         if (this.needsMatchCheck) {
@@ -213,8 +211,6 @@ export class BoardLogic {
         }
     }
 
-    // --- Reszta metod Match-3 bez zmian ---
-    
     public detectMatches() {
         const initialMatches = new Set<number>();
         for (let r = 0; r < ROWS; r++) {
@@ -303,7 +299,10 @@ export class BoardLogic {
             if (action !== 'NONE') {
                 console.log(`⚡ Trigger: ${action} on ${blockDef.name} (Size: ${size})`);
                 if (action === 'CREATE_SPECIAL') this.createSpecialBlock(group, finalMatches);
-                else group.forEach(gIdx => this.executeSpecialAction(action, gIdx, finalMatches));
+                else {
+                    // DELEGACJA DO ACTION MANAGER
+                    group.forEach(gIdx => this.runAction(action, gIdx, finalMatches));
+                }
             }
         }
     }
@@ -319,84 +318,27 @@ export class BoardLogic {
         finalMatches.delete(targetIdx);
     }
 
-    private executeSpecialAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
-        const col = originIdx % COLS;
-        const row = Math.floor(originIdx / COLS);
+    // Nowa metoda pomocnicza, która zastępuje executeSpecialAction
+    private runAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {
+        // Zawsze dodajemy źródło do zniszczenia (chyba że strategia zdecyduje inaczej, 
+        // ale domyślnie chcemy zniszczyć klocek, który wywołał akcję).
+        // W poprzedniej wersji robiliśmy to w executeSpecialAction. 
+        // Tutaj możemy to zrobić przed delegacją lub w każdej strategii.
+        // Dla czystości, zrobimy to "przed", ale z uwzględnieniem indestructible.
+        
         if (!targetSet.has(originIdx)) {
             const originDef = BlockRegistry.getById(this.cells[originIdx].typeId);
-            if (!originDef || !originDef.isIndestructible) targetSet.add(originIdx);
+            if (!originDef || !originDef.isIndestructible) {
+                targetSet.add(originIdx);
+            }
         }
-        switch (action) {
-            case 'EXPLODE_SMALL':
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        const nx = col + dx; const ny = row + dy;
-                        if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
-                            const nIdx = nx + ny * COLS;
-                            if (this.cells[nIdx].typeId !== -1 && this.cells[nIdx].state !== CellState.FALLING && !targetSet.has(nIdx)) {
-                                const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
-                                if (targetDef && targetDef.isIndestructible) continue;
-                                targetSet.add(nIdx);
-                                const victim = this.cells[nIdx];
-                                const victimDef = BlockRegistry.getById(victim.typeId);
-                                if (victimDef && (victim.typeId === SPECIAL_BLOCK_ID || victimDef.triggers.onMatch3 !== 'NONE')) {
-                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) ? 'EXPLODE_BIG' : victimDef.triggers.onMatch3;
-                                    if (reactionAction !== 'NONE') this.executeSpecialAction(reactionAction, nIdx, targetSet);
-                                }
-                            }
-                        }
-                    }
-                }
-                break;
-            case 'EXPLODE_BIG':
-                for (let dy = -2; dy <= 2; dy++) {
-                    for (let dx = -2; dx <= 2; dx++) {
-                        const nx = col + dx; const ny = row + dy;
-                        if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
-                            const nIdx = nx + ny * COLS;
-                            if (this.cells[nIdx].typeId !== -1 && this.cells[nIdx].state !== CellState.FALLING && !targetSet.has(nIdx)) {
-                                const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
-                                if (targetDef && targetDef.isIndestructible) continue;
-                                targetSet.add(nIdx);
-                                const victim = this.cells[nIdx];
-                                const victimDef = BlockRegistry.getById(victim.typeId);
-                                if (victimDef && (victim.typeId === SPECIAL_BLOCK_ID || victimDef.triggers.onMatch3 !== 'NONE')) {
-                                    const reactionAction = (victim.typeId === SPECIAL_BLOCK_ID) ? 'EXPLODE_BIG' : victimDef.triggers.onMatch3;
-                                    if (reactionAction !== 'NONE') this.executeSpecialAction(reactionAction, nIdx, targetSet);
-                                }
-                            }
-                        }
-                    }
-                }
-                break;
-            case 'LINE_CLEAR_H':
-                for (let c = 0; c < COLS; c++) {
-                    const nIdx = c + row * COLS;
-                    if (this.cells[nIdx].typeId !== -1 && !targetSet.has(nIdx)) {
-                        const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
-                        if (targetDef && targetDef.isIndestructible) continue;
-                        targetSet.add(nIdx);
-                    }
-                }
-                break;
-            case 'LINE_CLEAR_V':
-                for (let r = 0; r < ROWS; r++) {
-                    const nIdx = col + r * COLS;
-                    if (this.cells[nIdx].typeId !== -1 && !targetSet.has(nIdx)) {
-                        const targetDef = BlockRegistry.getById(this.cells[nIdx].typeId);
-                        if (targetDef && targetDef.isIndestructible) continue;
-                        targetSet.add(nIdx);
-                    }
-                }
-                break;
-            case 'MAGIC_BONUS':
-                this.comboTimer += 2.0; 
-                break;
-            case 'CREATE_SPECIAL':
-                break;
-        }
+
+        // Uruchomienie strategii
+        this.actionManager.execute(action, originIdx, this, targetSet);
     }
 
+    // updateStats, getLastMoveGroupSize, checkMatchAt, findHint, simulateSwap, findDeadlockFix - bez zmian
+    
     private updateStats(finalMatches: Set<number>) {
         let groupSize = finalMatches.size; 
         if (groupSize > this.lastMoveGroupSize) this.lastMoveGroupSize = groupSize;
