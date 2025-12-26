@@ -2,12 +2,11 @@ import { EventEmitter } from 'pixi.js';
 import { 
     COLS, ROWS, CellState, type Cell, 
     type GravityDir, 
-    COMBO_BONUS_SECONDS, AppConfig 
+    AppConfig, VisualConfig // Import VisualConfig
 } from './Config';
 import { Random } from './Random';
 import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
 
-// Importy Podsystemów
 import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';
@@ -22,25 +21,22 @@ export interface MoveResult {
 
 export class BoardLogic extends EventEmitter {
     public cells: Cell[];
-    // Podsystemy
-    public statsManager: StatsManager; // Publiczny, by UI mogło czytać
+    public statsManager: StatsManager;
     private physics: GridPhysics;
     private matchEngine: MatchEngine;
     private hintSystem: HintSystem;
     private actionManager: ActionManager;
 
     public needsMatchCheck: boolean = false;
-    public readonly EXPLOSION_TIME = 15.0; 
+    // USUNIĘTO: public readonly EXPLOSION_TIME = 15.0; -> Używamy VisualConfig
 
     public onBadMove: (() => void) | null = null;
-    
     private currentThinkingTime: number = 0; 
 
     constructor() {
         super();
         this.cells = [];
         
-        // Inicjalizacja Podsystemów
         this.statsManager = new StatsManager();
         this.actionManager = new ActionManager();
         this.physics = new GridPhysics(this.cells);
@@ -62,7 +58,6 @@ export class BoardLogic extends EventEmitter {
         this.initBoard();
     }
 
-    // --- Proxy Properties ---
     public get currentCombo() { return this.matchEngine.currentCombo; }
     public set currentCombo(v) { this.matchEngine.currentCombo = v; }
     public get comboTimer() { return this.matchEngine.comboTimer; }
@@ -73,13 +68,18 @@ export class BoardLogic extends EventEmitter {
 
     public getLastMoveGroupSize() { return this.matchEngine.lastMoveGroupSize; }
     public setGravity(direction: GravityDir) { this.physics.setGravity(direction); }
+    // findHint() i findDeadlockFix() nie są już potrzebne publicznie dla GameScene,
+    // bo GameScene teraz tylko słucha eventów, ale GameManager może ich potrzebować.
+    // Zostawiamy dla kompatybilności.
     public findHint() { return this.hintSystem.findHint(); }
     public findDeadlockFix() { return this.hintSystem.findDeadlockFix(); }
 
-    // --- Main Loop ---
     public update(delta: number) {
         const dt = delta / 60.0;
         this.matchEngine.update(dt);
+        
+        // NOWOŚĆ: Aktualizacja systemu podpowiedzi
+        this.hintSystem.update(dt);
 
         if (this.statsEnabled && !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE)) {
             this.currentThinkingTime += dt;
@@ -94,12 +94,15 @@ export class BoardLogic extends EventEmitter {
             this.needsMatchCheck = false;
         }
     }
+    
+    // ... initBoard, trySwap, runAction bez zmian ...
 
     public initBoard() {
         this.setGravity(AppConfig.gravityDir);
         this.cells.length = 0;
         this.matchEngine.reset();
         this.statsManager.reset();
+        this.hintSystem.reset(); // Reset podpowiedzi
         this.currentThinkingTime = 0;
 
         for (let i = 0; i < COLS * ROWS; i++) {
@@ -124,6 +127,9 @@ export class BoardLogic extends EventEmitter {
     public trySwap(idxA: number, dirX: number, dirY: number): MoveResult {
         const result: MoveResult = { success: false, causedMatch: false, maxGroupSize: 0 };
         this.matchEngine.lastMoveGroupSize = 0; 
+        
+        // Reset hintów przy próbie ruchu
+        this.hintSystem.reset();
 
         const col = idxA % COLS; const row = Math.floor(idxA / COLS);
         const targetCol = col + dirX; const targetRow = row + dirY;

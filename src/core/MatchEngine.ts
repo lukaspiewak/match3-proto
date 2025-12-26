@@ -1,4 +1,4 @@
-import { CellState, COLS, ROWS, AppConfig, COMBO_BONUS_SECONDS } from '../Config';
+import { CellState, COLS, ROWS, AppConfig, VisualConfig, COMBO_BONUS_SECONDS } from '../Config'; // + VisualConfig
 import { BlockRegistry, SPECIAL_BLOCK_ID, type SpecialAction } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 
@@ -86,7 +86,7 @@ export class MatchEngine {
                 const cell = cells[idx];
                 if (cell.state !== CellState.EXPLODING) {
                     cell.state = CellState.EXPLODING;
-                    cell.timer = this.board.EXPLOSION_TIME;
+                    cell.timer = VisualConfig.EXPLOSION_DURATION;
                     
                     this.board.emit('explode', { 
                         id: cell.id, 

@@ -37,6 +37,14 @@ export const PLAYER_ID_2 = 1;
 export const COMBO_BONUS_SECONDS = 1.0; 
 export const CURRENT_GRAVITY: GravityDir = 'DOWN'; 
 
+// --- NOWOŚĆ: Konfiguracja wizualna i AI ---
+export const VisualConfig = {
+    EXPLOSION_DURATION: 15.0,  // Czas trwania animacji wybuchu (w klatkach/czasie gry)
+    HINT_DELAY_SECONDS: 3.0,   // Ile sekund bezczynności zanim pojawi się podpowiedź
+    SHAKE_STRENGTH: 6,         // Siła wstrząsu
+    SHAKE_DURATION: 0.3        // Czas wstrząsu
+};
+
 // --- KONFIGURACJA RUNTIME ---
 export const AppConfig = {
     gameMode: 'SOLO' as GameMode,
@@ -48,29 +56,13 @@ export const AppConfig = {
     gravityDir: 'DOWN' as GravityDir
 };
 
-// --- SYSTEM MOTYWÓW (THEMING) ---
 export const CurrentTheme = {
-    // Główne tło (#1a202c)
     background: 0x1a202c, 
-    
-    // UI Panele (nieco jaśniejsze od tła - #2d3748)
     panelBg: 0x2d3748,
-    
-    // Sloty/Wgłębienia (ciemniejsze - #171923)
     slotBg: 0x171923,
-    
-    // Tekst główny (biały/jasnoszary - #f7fafc)
     textMain: 0xf7fafc,
-    
-    // Tekst drugoplanowy (szary - #a0aec0)
     textMuted: 0xa0aec0,
-    
-    // Akcent główny (Złoty/Pomarańczowy - #ecc94b)
     accent: 0xecc94b,
-    
-    // Akcent ostrzegawczy (Czerwony - #f56565)
     danger: 0xf56565,
-    
-    // Obramowania (delikatne)
     border: 0x4a5568
 };

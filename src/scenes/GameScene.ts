@@ -9,8 +9,7 @@ import { Button } from '../ui/Button';
 import { BoardRenderer } from '../views/BoardRenderer'; 
 import { 
     COLS, ROWS, TILE_SIZE, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme,
-    CellState 
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme, VisualConfig 
 } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
@@ -28,9 +27,6 @@ export class GameScene extends PIXI.Container implements Scene {
     private timerLabel!: PIXI.Text;
     private statusText!: PIXI.Text;
     
-    private idleTime = 0;
-    private hintIndices: number[] = [];
-
     private backToMenuCallback: () => void;
 
     private readonly GAME_LOGICAL_WIDTH = (COLS * TILE_SIZE) + 20;
@@ -141,19 +137,13 @@ export class GameScene extends PIXI.Container implements Scene {
         this.renderer.initVisuals();
 
         this.gameManager.startGame();
-        this.idleTime = 0;
-        this.hintIndices = [];
 
-        // --- TU BYŁO ŹRÓDŁO PROBLEMU ---
-        // Usuwamy stare listenery (żeby nie było duplikatów przy restarcie)
         this.logic.removeAllListeners(); 
-        
-        // --- POPRAWKA: Musimy ponownie podpiąć listenery Renderera ---
         this.renderer.bindEvents(); 
 
-        // Podpinamy listenery Sceny
+        // --- ZMIANA: Obsługa eventów logiki ---
         this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
-
+        
         this.logic.on('explode', (data: { id: number, typeId: number, x: number, y: number }) => {
             const currentId = this.gameManager.getCurrentPlayerId();
             if (currentId === PLAYER_ID_1) this.scoreUI.addScore(data.typeId);
@@ -162,6 +152,16 @@ export class GameScene extends PIXI.Container implements Scene {
 
             this.soundManager.playPop();
             if (navigator.vibrate) navigator.vibrate(20);
+        });
+
+        // Nasłuchiwanie podpowiedzi z HintSystem
+        this.logic.on('hint', (indices: number[]) => {
+            this.renderer.setHints(indices);
+        });
+
+        this.logic.on('deadlock', (fix: { id: number, targetType: number }) => {
+             this.logic.cells[fix.id].typeId = fix.targetType;
+             this.onDeadlockFixed(fix.id, fix.targetType);
         });
     }
 
@@ -172,37 +172,11 @@ export class GameScene extends PIXI.Container implements Scene {
         if (this.scoreUI) this.scoreUI.update(delta);
         if (this.botScoreUI && this.botScoreUI.container.visible) this.botScoreUI.update(delta);
 
-        this.updateHintLogic(delta);
         this.updateUI();
         
         const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
         const selectedId = human ? human.getSelectedId() : -1;
         this.renderer.update(delta, selectedId);
-    }
-
-    private updateHintLogic(delta: number) {
-        if (this.logic.cells.every(c => c.state === CellState.IDLE) && !this.gameManager.isGameOver) {
-            this.idleTime += delta / 60.0; 
-            if (this.idleTime > 10.0 && this.hintIndices.length === 0) {
-                const hint = this.logic.findHint();
-                if (hint) {
-                    this.hintIndices = hint;
-                    this.renderer.setHints(hint); 
-                } else {
-                    const fix = this.logic.findDeadlockFix();
-                    if (fix) {
-                        this.logic.cells[fix.id].typeId = fix.targetType;
-                        this.onDeadlockFixed(fix.id, fix.targetType);
-                    } else {
-                        this.idleTime = 0; 
-                    }
-                }
-            }
-        } else {
-            this.idleTime = 0;
-            this.hintIndices = [];
-            this.renderer.setHints([]);
-        }
     }
 
     private updateUI() {
@@ -228,8 +202,6 @@ export class GameScene extends PIXI.Container implements Scene {
     private onDeadlockFixed(id: number, type: number) {
         this.soundManager.playPop();
         if (navigator.vibrate) navigator.vibrate(20);
-        this.idleTime = 0; 
-        this.hintIndices = [];
         this.renderer.setHints([]);
     }
 

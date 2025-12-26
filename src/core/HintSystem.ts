@@ -1,4 +1,4 @@
-import { COLS, ROWS, CellState, AppConfig } from '../Config';
+import { COLS, ROWS, CellState, AppConfig, VisualConfig } from '../Config';
 import { BlockRegistry } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 import type { MatchEngine } from './MatchEngine';
@@ -6,15 +6,54 @@ import type { MatchEngine } from './MatchEngine';
 export class HintSystem {
     private board: BoardLogic;
     private matchEngine: MatchEngine;
+    
+    // NOWOŚĆ: Wewnętrzny licznik
+    private idleTimer: number = 0;
+    private activeHint: number[] | null = null;
 
     constructor(board: BoardLogic, matchEngine: MatchEngine) {
         this.board = board;
         this.matchEngine = matchEngine;
     }
 
+    // NOWOŚĆ: Metoda update wywoływana co klatkę
+    public update(dt: number) {
+        // Jeśli plansza jest stabilna (nic się nie dzieje)
+        if (this.board.cells.every(c => c.state === CellState.IDLE)) {
+            this.idleTimer += dt;
+            
+            // Jeśli minął czas i nie mamy jeszcze aktywnej podpowiedzi
+            if (this.idleTimer >= VisualConfig.HINT_DELAY_SECONDS && this.activeHint === null) {
+                const hint = this.findHint();
+                if (hint) {
+                    this.activeHint = hint;
+                    // Emitujemy zdarzenie przez BoardLogic
+                    this.board.emit('hint', hint);
+                } else {
+                    // Brak ruchów - deadlock?
+                    const fix = this.findDeadlockFix();
+                    if (fix) {
+                        // Automatyczna naprawa (BoardLogic to obsłuży lub przekaże wyżej)
+                        this.board.emit('deadlock', fix);
+                    }
+                }
+            }
+        } else {
+            // Jeśli gracz coś robi lub klocki spadają - resetujemy licznik
+            this.reset();
+        }
+    }
+
+    public reset() {
+        this.idleTimer = 0;
+        if (this.activeHint !== null) {
+            this.activeHint = null;
+            this.board.emit('hint', []); // Pusta tablica = wyłącz podświetlenie
+        }
+    }
+
     public findHint(): number[] | null {
-        if (!this.board.cells.every(c => c.state === CellState.IDLE)) return null;
-        
+        // ... (kod bez zmian) ...
         const cells = this.board.cells;
         for (let idx = 0; idx < cells.length; idx++) {
             const cell = cells[idx]; 
@@ -23,12 +62,10 @@ export class HintSystem {
             const col = idx % COLS; 
             const row = Math.floor(idx / COLS);
             
-            // Sprawdzamy ruch w prawo
             if (col < COLS - 1) { 
                 const rI = idx + 1; 
                 if (cells[rI].typeId !== -1 && this.simulateSwap(idx, rI)) return [idx, rI]; 
             }
-            // Sprawdzamy ruch w dół
             if (row < ROWS - 1) { 
                 const dI = idx + COLS; 
                 if (cells[dI].typeId !== -1 && this.simulateSwap(idx, dI)) return [idx, dI]; 
@@ -38,21 +75,19 @@ export class HintSystem {
     }
 
     private simulateSwap(idxA: number, idxB: number): boolean {
+        // ... (kod bez zmian) ...
         const cells = this.board.cells;
         const defA = BlockRegistry.getById(cells[idxA].typeId);
         const defB = BlockRegistry.getById(cells[idxB].typeId);
         
         if (!defA || !defB || !defA.isSwappable || !defB.isSwappable) return false;
 
-        // Symulacja
         const t = cells[idxA].typeId; 
         cells[idxA].typeId = cells[idxB].typeId; 
         cells[idxB].typeId = t;
         
-        // Sprawdzenie (używając MatchEngine)
         const hasMatch = this.matchEngine.checkMatchAt(idxA) || this.matchEngine.checkMatchAt(idxB);
         
-        // Cofnięcie
         cells[idxB].typeId = cells[idxA].typeId; 
         cells[idxA].typeId = t; 
         
@@ -60,15 +95,14 @@ export class HintSystem {
     }
 
     public findDeadlockFix(): { id: number, targetType: number } | null {
+        // ... (kod bez zmian) ...
         const cells = this.board.cells;
         for (let i = 0; i < cells.length; i++) {
             const originalType = cells[i].typeId; 
             if (originalType === -1) continue;
             
-            // Próbujemy podmienić klocek na każdy inny dostępny typ
             for (let t = 0; t < AppConfig.blockTypes; t++) {
                 if (t === originalType) continue; 
-                
                 cells[i].typeId = t;
                 if (this.findHint() !== null) { 
                     cells[i].typeId = originalType; 
