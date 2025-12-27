@@ -32,11 +32,11 @@ export const LEVEL_1: LevelConfig = {
     timeLimit: 0,
     availableBlockIds: [0, 1, 2, 3], // Tylko 4 podstawowe kolory
     goals: [
-        { type: 'COLLECT', targetId: 200, amount: 5 }
+        { type: 'COLLECT', targetId: 1, amount: 5 }
     ],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],
-        [R_, R_, S_, S_, S_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, S_, R_, S_, R_, R_],
@@ -59,13 +59,13 @@ export const LEVEL_2: LevelConfig = {
         { type: 'SCORE', amount: 3000 }
     ],
     layout: [
-        [S_, S_, S_, S_, S_, S_, S_],
-        [S_, I_, I_, I_, I_, I_, S_],
-        [S_, I_, R_, R_, R_, I_, S_],
-        [S_, I_, R_, R_, R_, I_, S_],
-        [S_, I_, R_, R_, R_, I_, S_],
-        [S_, I_, I_, I_, I_, I_, S_],
-        [S_, S_, S_, R_, S_, S_, S_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, I_, I_, I_, I_, I_, R_],
+        [R_, I_, R_, R_, R_, I_, R_],
+        [R_, I_, R_, R_, R_, I_, R_],
+        [R_, I_, R_, R_, R_, I_, R_],
+        [R_, I_, I_, I_, I_, I_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_]
     ]

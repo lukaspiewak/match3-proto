@@ -1,9 +1,11 @@
 import { BoardLogic } from './BoardLogic';
 import { PlayerController } from './PlayerController';
-import {
-    PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig
+import { 
+    PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig 
 } from './Config';
-import { type LevelConfig } from './LevelDef'; // Import definicji
+import { type LevelConfig } from './LevelDef';
+// NOWOŚĆ: Import Resources
+import { Resources } from './core/ResourceManager';
 
 export class GameManager {
     private logic: BoardLogic;
@@ -14,21 +16,23 @@ export class GameManager {
     private currentLevel: LevelConfig | null = null;
     private goalProgress: number[] = [];
     private currentScore: number = 0;
+    
+    // NOWOŚĆ: Tymczasowy magazyn łupów z obecnego poziomu
+    private levelLoot: { [id: number]: number } = {};
 
     // Liczniki
     public movesLeft: number = 0;
     public timeLeft: number = 0;
 
     public turnTimer: number = 0;
-    private isProcessingTurn: boolean = false;
+    private isProcessingTurn: boolean = false; 
 
     public isGameOver: boolean = false;
-    public globalMovesMade: number = 0; // Legacy (dla statystyk ogólnych)
+    public globalMovesMade: number = 0; 
     public globalTimeElapsed: number = 0;
-
+    
     public gameStatusText: string = "";
 
-    // ZMIANA: Callback przyjmuje teraz info o wygranej
     public onGameFinished: ((reason: string, win: boolean) => void) | null = null;
     public onDeadlockFixed: ((id: number, type: number) => void) | null = null;
 
@@ -36,7 +40,6 @@ export class GameManager {
         this.logic = logic;
         this.turnTimer = TURN_TIME_LIMIT;
 
-        // Podpinamy nasłuchiwanie wybuchów do celów (COLLECT/SCORE)
         this.logic.on('explode', (data: { id: number, typeId: number }) => {
             this.onBlockDestroyed(data.typeId);
         });
@@ -55,7 +58,6 @@ export class GameManager {
         return this.players[this.currentPlayerIndex].id;
     }
 
-    // --- NOWA METODA STARTU ---
     public startLevel(level: LevelConfig) {
         this.currentLevel = level;
         this.currentPlayerIndex = 0;
@@ -63,15 +65,14 @@ export class GameManager {
         this.isGameOver = false;
         this.currentScore = 0;
 
-        // Reset liczników z configu poziomu
         this.movesLeft = level.moveLimit;
         this.timeLeft = level.timeLimit;
-
-        // Reset postępu celów
+        
         this.goalProgress = level.goals.map(() => 0);
+        
+        // NOWOŚĆ: Reset łupów na starcie poziomu
+        this.levelLoot = {};
 
-        // Przekazujemy układ do logiki!
-        // Przekazujemy układ ORAZ listę dozwolonych bloków
         console.log(`Loading Level: ${level.id}`);
         this.logic.initBoard(level.layout, level.availableBlockIds);
 
@@ -80,10 +81,9 @@ export class GameManager {
         this.startTurn();
     }
 
-    // Stara metoda (zostawiamy dla kompatybilności lub usuwamy)
     public startGame() {
         console.warn("Use startLevel() instead of startGame()");
-        this.logic.initBoard(); // Pusta/Losowa plansza
+        this.logic.initBoard(); 
         this.startTurn();
     }
 
@@ -99,7 +99,6 @@ export class GameManager {
         const currentPlayer = this.players[this.currentPlayerIndex];
         const dt = delta / 60.0;
 
-        // 1. Limit Czasu Levelu
         if (this.currentLevel.timeLimit > 0) {
             this.timeLeft -= dt;
             if (this.timeLeft <= 0) {
@@ -110,20 +109,18 @@ export class GameManager {
             }
         }
 
-        // 2. Obsługa tury (czekanie na animacje)
         if (!this.logic.cells.every(c => c.state === CellState.IDLE)) {
             this.isProcessingTurn = true;
         } else if (this.isProcessingTurn) {
             this.isProcessingTurn = false;
-            this.endTurn();
+            this.endTurn(); 
         }
 
-        // Timer tury (opcjonalny, np. dla PvP)
         if (AppConfig.gameMode !== 'SOLO' && !this.isProcessingTurn) {
-            this.turnTimer -= dt;
-            if (this.turnTimer <= 0) {
-                this.endTurn();
-            }
+             this.turnTimer -= dt;
+             if (this.turnTimer <= 0) {
+                 this.endTurn();
+             }
         }
 
         if (currentPlayer) {
@@ -135,11 +132,9 @@ export class GameManager {
 
     public isMyTurn(playerId: number): boolean {
         if (this.isGameOver) return false;
-        // W trybie SOLO zawsze jest tura gracza (chyba że animacje trwają)
         if (AppConfig.gameMode === 'SOLO') {
-            // Blokujemy input tylko jak coś się dzieje na planszy
-            const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
-            return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
+             const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
+             return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
         }
         const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
         return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
@@ -151,20 +146,22 @@ export class GameManager {
         const result = this.logic.trySwap(idxA, dirX, dirY);
 
         if (result.success) {
-            // Odejmujemy ruch tylko jeśli był udany i mamy limit
             if (this.currentLevel && this.currentLevel.moveLimit > 0) {
                 this.movesLeft--;
             }
         }
     }
 
-    // --- LOGIKA CELÓW ---
     private onBlockDestroyed(typeId: number) {
         if (!this.currentLevel || this.isGameOver) return;
 
         this.currentScore += 10;
 
-        // Aktualizacja celów
+        // NOWOŚĆ: Zbieranie łupów do tymczasowego worka
+        if (!this.levelLoot[typeId]) this.levelLoot[typeId] = 0;
+        this.levelLoot[typeId]++;
+
+        // Aktualizacja celów poziomu
         this.currentLevel.goals.forEach((goal, index) => {
             if (goal.type === 'COLLECT' && goal.targetId === typeId) {
                 this.goalProgress[index]++;
@@ -179,7 +176,6 @@ export class GameManager {
     private checkWinLossCondition() {
         if (!this.currentLevel || this.isGameOver) return;
 
-        // Czy wygrał?
         let allGoalsMet = true;
         this.currentLevel.goals.forEach((goal, index) => {
             if (this.goalProgress[index] < goal.amount) allGoalsMet = false;
@@ -190,7 +186,6 @@ export class GameManager {
             return;
         }
 
-        // Czy przegrał (brak ruchów)?
         if (this.currentLevel.moveLimit > 0 && this.movesLeft <= 0 && !this.isProcessingTurn) {
             this.finishGame("OUT OF MOVES", false);
         }
@@ -199,6 +194,17 @@ export class GameManager {
     private finishGame(reason: string, win: boolean) {
         this.isGameOver = true;
         this.gameStatusText = win ? "VICTORY!" : "DEFEAT";
+        
+        // --- NOWOŚĆ: Przekazanie łupów do globalnego magazynu tylko przy wygranej ---
+        if (win) {
+            console.log("💰 Loot collected:", this.levelLoot);
+            for (const [id, amount] of Object.entries(this.levelLoot)) {
+                Resources.addResource(parseInt(id), amount);
+            }
+        } else {
+            console.log("❌ Level failed. Loot lost.");
+        }
+
         console.log(`🏁 GAME OVER: ${reason} (Win: ${win})`);
         if (this.onGameFinished) this.onGameFinished(reason, win);
     }
@@ -206,8 +212,7 @@ export class GameManager {
     private updateStatusText() {
         if (!this.currentLevel) return;
         let status = "";
-
-        // Cele
+        
         this.currentLevel.goals.forEach((goal, i) => {
             const current = this.goalProgress[i];
             const max = goal.amount;
@@ -215,7 +220,6 @@ export class GameManager {
             else status += `Score: ${current}/${max}\n`;
         });
 
-        // Limity
         if (this.currentLevel.moveLimit > 0) status += `Moves: ${this.movesLeft}`;
         else if (this.currentLevel.timeLimit > 0) status += `Time: ${Math.ceil(this.timeLeft)}s`;
 
@@ -226,7 +230,6 @@ export class GameManager {
         const currentPlayer = this.players[this.currentPlayerIndex];
         this.logic.statsEnabled = true;
 
-        // Sprawdzenie deadlocka na początku tury
         const hint = this.logic.findHint();
         if (!hint) {
             console.log("Fixing Deadlock...");
@@ -244,7 +247,6 @@ export class GameManager {
         if (this.isGameOver) return;
         this.checkWinLossCondition();
         if (!this.isGameOver) {
-            // W trybie SOLO tura jest ciągła, w VS zmieniamy gracza
             if (AppConfig.gameMode === 'VS_AI') {
                 this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
             }
