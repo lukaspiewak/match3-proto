@@ -13,6 +13,7 @@ import {
 } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
+// Importujemy typ, ale nie konkretny poziom (ten przyjdzie z zewnątrz)
 import { type LevelConfig, LEVEL_1 } from '../LevelDef'; 
 
 export class GameScene extends PIXI.Container implements Scene {
@@ -29,6 +30,7 @@ export class GameScene extends PIXI.Container implements Scene {
     private statusText!: PIXI.Text;
     
     private backToMenuCallback: () => void;
+    // NOWOŚĆ: Przechowujemy wybrany poziom
     private pendingLevelConfig: LevelConfig | null = null;
 
     private readonly GAME_LOGICAL_WIDTH = (COLS * TILE_SIZE) + 20;
@@ -56,6 +58,7 @@ export class GameScene extends PIXI.Container implements Scene {
         this.gameManager.onGameFinished = (reason, win) => this.onGameFinished(reason, win);
     }
 
+    // Metoda wywoływana przez main.ts przed pokazaniem sceny
     public setCurrentLevel(level: LevelConfig) {
         this.pendingLevelConfig = level;
     }
@@ -139,23 +142,51 @@ export class GameScene extends PIXI.Container implements Scene {
 
         this.renderer.initVisuals();
 
-        const levelToLoad = this.pendingLevelConfig || LEVEL_1; 
+        // --- ZMIANA: Używamy poziomu wybranego w menu ---
+        const levelToLoad = this.pendingLevelConfig || LEVEL_1; // Fallback
         this.gameManager.startLevel(levelToLoad); 
 
-        // 1. Czyścimy stare listenery (to usuwało nasłuch GameManagera)
+        // --- ZMIANA: Inicjalizacja PASKÓW w trybie Construction ---
+        if (this.gameManager.currentLevelMode === 'CONSTRUCTION') {
+            activeBlockIds.forEach(id => {
+                const amount = this.gameManager.getSessionResourceAmount(id);
+                const startAmount = this.gameManager.getStartResourceAmount(id);
+                
+                // Ustawiamy etykietę tekstową ("50")
+                this.scoreUI.setStockLabel(id, amount);
+                
+                // Ustawiamy wysokość paska (Aktualna / Początkowa)
+                // Na starcie będzie 1.0 (pełny), chyba że startAmount = 0
+                this.scoreUI.updateBarValue(id, amount, startAmount);
+            });
+        }
+
         this.logic.removeAllListeners(); 
-        
-        // 2. Podpinamy renderera
         this.renderer.bindEvents(); 
-        
-        // 3. ZMIANA: Ponownie podpinamy GameManagera!
         this.gameManager.bindEvents();
 
         this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
         
         this.logic.on('explode', (data: { id: number, typeId: number, x: number, y: number }) => {
             const currentId = this.gameManager.getCurrentPlayerId();
-            if (currentId === PLAYER_ID_1) this.scoreUI.addScore(data.typeId);
+            
+            // Tryb STANDARD: Pasek rośnie od 0 do 100 (tak jak było)
+            if (this.gameManager.currentLevelMode === 'STANDARD') {
+                if (currentId === PLAYER_ID_1) this.scoreUI.addScore(data.typeId);
+            }
+
+            // Tryb CONSTRUCTION: Pasek maleje
+            if (this.gameManager.currentLevelMode === 'CONSTRUCTION') {
+                const newAmount = this.gameManager.getSessionResourceAmount(data.typeId);
+                const startAmount = this.gameManager.getStartResourceAmount(data.typeId);
+                
+                // Aktualizujemy tekst
+                this.scoreUI.setStockLabel(data.typeId, newAmount);
+                
+                // Aktualizujemy pasek (zmniejszamy go)
+                this.scoreUI.updateBarValue(data.typeId, newAmount, startAmount);
+            }
+
             this.soundManager.playPop();
             if (navigator.vibrate) navigator.vibrate(20);
         });
