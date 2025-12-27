@@ -1,5 +1,5 @@
 // src/core/BuildingManager.ts
-import { BuildingRegistry, BuildingDefinition } from '../BuildingDef';
+import { BuildingRegistry, type BuildingDefinition } from '../BuildingDef';
 
 interface SavedBuildingState {
     [buildingId: string]: number; // ID -> Level

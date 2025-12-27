@@ -3,15 +3,15 @@ import { Button } from '../ui/Button';
 import { AppConfig, type GravityDir, CurrentTheme } from '../Config';
 import { type Scene } from '../SceneManager';
 import { LEVELS, type LevelConfig } from '../LevelDef';
-import { Resources } from '../core/ResourceManager'; // NOWOŚĆ: Import
-import { BlockRegistry } from '../BlockDef'; // Żeby pobrać nazwy/ikony klocków
+import { Resources } from '../core/ResourceManager'; 
+import { BlockRegistry } from '../BlockDef'; 
 
 export class MenuScene extends PIXI.Container implements Scene {
     private mainContainer: PIXI.Container;
     private optionsContainer: PIXI.Container;
     private levelSelectContainer: PIXI.Container;
     
-    // NOWOŚĆ: Kontener na inwentarz
+    // Kontener na tekst inwentarza (prawy górny róg)
     private resourcesText: PIXI.Text;
 
     private btnOptLimit: Button;
@@ -20,7 +20,11 @@ export class MenuScene extends PIXI.Container implements Scene {
     private btnOptGravity: Button;
     private btnOptSeed: Button;
 
+    // Callback do uruchomienia poziomu
     private startGameCallback: (level: LevelConfig) => void;
+    
+    // NOWOŚĆ: Callback do otwarcia miasta (ustawiany w main.ts)
+    public onOpenCity: (() => void) | null = null; 
 
     constructor(startGameCallback: (level: LevelConfig) => void) {
         super();
@@ -42,7 +46,7 @@ export class MenuScene extends PIXI.Container implements Scene {
             text: '',
             style: { fontFamily: 'Arial', fontSize: 14, fill: 0xFFD700, align: 'right' }
         });
-        this.resourcesText.anchor.set(1, 0);
+        this.resourcesText.anchor.set(1, 0); // Kotwica: Prawy-Góra
         this.addChild(this.resourcesText);
 
         this.buildMainMenu();
@@ -50,12 +54,11 @@ export class MenuScene extends PIXI.Container implements Scene {
         this.buildLevelSelect();
     }
 
-    // --- NOWOŚĆ: Metoda odświeżająca wyświetlanie zasobów ---
+    // Odświeża tekst z zasobami na podstawie ResourceManager
     private refreshResourcesUI() {
         const allRes = Resources.getAll();
         let text = "INVENTORY:\n";
         
-        // Sortujemy, żeby kolejność była stała
         const ids = Object.keys(allRes).map(Number).sort((a,b) => a - b);
         
         let hasAny = false;
@@ -63,7 +66,6 @@ export class MenuScene extends PIXI.Container implements Scene {
             const amount = allRes[id];
             if (amount > 0) {
                 const def = BlockRegistry.getById(id);
-                // Wyświetlamy symbol (np. $) lub nazwę
                 const name = def ? (def.symbol || def.name) : `Block ${id}`;
                 text += `${name}: ${amount}\n`;
                 hasAny = true;
@@ -84,34 +86,56 @@ export class MenuScene extends PIXI.Container implements Scene {
         title.y = 100;
         this.mainContainer.addChild(title);
 
-        const btnPlay = new Button("PLAY", 200, 60, 0x00AA00, () => {
+        let y = 200;
+
+        // 1. PLAY LEVELS
+        const btnPlay = new Button("PLAY LEVELS", 220, 60, 0x00AA00, () => {
             this.mainContainer.visible = false;
             this.levelSelectContainer.visible = true;
         });
-        btnPlay.y = 200;
+        btnPlay.y = y;
         this.mainContainer.addChild(btnPlay);
+        
+        y += 80;
 
-        const btnVs = new Button("VS BOT", 200, 60, 0xAA0000, () => {
+        // 2. MY CITY (NOWOŚĆ)
+        const btnCity = new Button("MY CITY", 220, 60, 0xD97706, () => { // Kolor pomarańczowy/złoty
+            if (this.onOpenCity) {
+                this.onOpenCity();
+            }
+        });
+        btnCity.y = y;
+        this.mainContainer.addChild(btnCity);
+
+        y += 80;
+
+        // 3. VS BOT
+        const btnVs = new Button("VS BOT", 220, 60, 0xAA0000, () => {
             AppConfig.gameMode = 'VS_AI';
             this.startGameCallback(LEVELS[0]);
         });
-        btnVs.y = 280;
+        btnVs.y = y;
         this.mainContainer.addChild(btnVs);
 
-        const btnOpt = new Button("OPTIONS", 200, 60, 0x0000AA, () => {
+        y += 80;
+
+        // 4. OPTIONS
+        const btnOpt = new Button("OPTIONS", 220, 60, 0x0000AA, () => {
             this.mainContainer.visible = false;
             this.optionsContainer.visible = true;
             this.refreshOptions();
         });
-        btnOpt.y = 360;
+        btnOpt.y = y;
         this.mainContainer.addChild(btnOpt);
         
-        // Debug przycisk do resetu save'a (opcjonalny)
+        y += 70;
+
+        // 5. RESET SAVE (DEBUG)
         const btnResetSave = new Button("RESET SAVE", 150, 40, 0x333333, () => {
             Resources.clearSave();
             this.refreshResourcesUI();
         });
-        btnResetSave.y = 450;
+        btnResetSave.y = y;
         this.mainContainer.addChild(btnResetSave);
     }
 
@@ -124,7 +148,9 @@ export class MenuScene extends PIXI.Container implements Scene {
         let y = 120;
         
         LEVELS.forEach((level, index) => {
-            const btn = new Button(level.name, 300, 50, 0x444444, () => {
+            // Dodajemy oznaczenie trybu do nazwy przycisku
+            const modeLabel = level.mode === 'CONSTRUCTION' ? ' [BUILD]' : '';
+            const btn = new Button(level.name + modeLabel, 350, 50, 0x444444, () => {
                 AppConfig.gameMode = 'SOLO';
                 this.startGameCallback(level);
             });
@@ -212,10 +238,11 @@ export class MenuScene extends PIXI.Container implements Scene {
     public resize(width: number, height: number) {
         this.x = width / 2;
         this.y = 0; 
+        
         // Pozycjonowanie licznika zasobów w prawym górnym rogu ekranu
         // Ponieważ MenuScene jest wycentrowane (x = width/2), musimy przesunąć tekst w prawo o width/2
-        this.resourcesText.x = (width / 2) - 10; 
-        this.resourcesText.y = 10;
+        this.resourcesText.x = (width / 2) - 20; 
+        this.resourcesText.y = 20;
     }
     
     public onShow() {

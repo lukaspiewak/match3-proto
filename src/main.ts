@@ -2,9 +2,10 @@ import * as PIXI from 'pixi.js';
 import { SceneManager } from './SceneManager';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
+import { CityScene } from './scenes/CityScene'; // NOWOŚĆ: Import
 import { BlockRegistry } from './BlockDef'; 
 import { CurrentTheme } from './Config';
-import { type LevelConfig } from './LevelDef'; // Import typu
+import { type LevelConfig } from './LevelDef';
 
 const app = new PIXI.Application();
 
@@ -18,6 +19,7 @@ async function init() {
     document.body.appendChild(app.canvas);
     window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
 
+    // Ładowanie zasobów
     const assetsToLoad = BlockRegistry.getAssetManifest();
     assetsToLoad.push({ alias: 'crack', src: '/assets/crack.svg' }); 
 
@@ -35,22 +37,39 @@ async function init() {
     // --- INIT SCENE MANAGER ---
     const sceneManager = new SceneManager(app);
 
-    // ZMIANA: MenuScene zwraca teraz wybrany level
+    // 1. MENU SCENE
     const menuScene = new MenuScene((level: LevelConfig) => {
-        // Przekazujemy wybrany level do GameScene
+        // Callback: Start Level (przekierowanie do gry)
         gameScene.setCurrentLevel(level);
         sceneManager.switchTo('GAME');
     });
 
+    // Callback: Open City (przekierowanie do miasta)
+    menuScene.onOpenCity = () => {
+        sceneManager.switchTo('CITY');
+    };
+
+    // 2. GAME SCENE
     const gameScene = new GameScene(app, () => {
+        // Callback: Back to Menu (po wyjściu z gry)
         sceneManager.switchTo('MENU');
     });
 
+    // 3. CITY SCENE (NOWOŚĆ)
+    const cityScene = new CityScene(() => {
+        // Callback: Back to Menu (po wyjściu z miasta)
+        sceneManager.switchTo('MENU');
+    });
+
+    // Rejestracja scen
     sceneManager.add('MENU', menuScene);
     sceneManager.add('GAME', gameScene);
+    sceneManager.add('CITY', cityScene);
 
+    // Start
     sceneManager.switchTo('MENU');
 
+    // Obsługa resize i pętli gry
     window.addEventListener('resize', () => sceneManager.forceResize());
     sceneManager.forceResize();
 
