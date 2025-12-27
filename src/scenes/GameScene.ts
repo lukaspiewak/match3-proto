@@ -24,22 +24,30 @@ export class GameScene extends PIXI.Container implements Scene {
     private soundManager: SoundManager;
     private renderer: BoardRenderer; 
     
-    // Elementy HUD
+    // --- UI ELEMENTS ---
     private hudContainer: PIXI.Container; 
     private scoreUI!: ScoreUI;
     private botScoreUI!: ScoreUI;
-    private timerBarBg!: PIXI.Graphics;
-    private timerBarFill!: PIXI.Graphics;
-    private exitBtn!: Button; 
     
-    // Status (opcjonalny, teraz mniej ważny)
+    // Paski postępu (Główny i Drugorzędny)
+    private primaryBarBg!: PIXI.Graphics;
+    private primaryBarFill!: PIXI.Graphics;
+    
+    private secondaryBarBg!: PIXI.Graphics;
+    private secondaryBarFill!: PIXI.Graphics;
+
+    private exitBtn!: Button; 
     private statusText!: PIXI.Text;
     
+    // --- NOWE PANELE BOCZNE/ŚRODKOWE ---
+    private panelLeft: PIXI.Container;
+    private panelRight: PIXI.Container;
+    private panelLeftBg: PIXI.Graphics;
+    private panelRightBg: PIXI.Graphics;
+
     private backToMenuCallback: () => void;
     private pendingLevelConfig: LevelConfig | null = null;
 
-    // Logiczne wymiary samej planszy (do skalowania)
-    // Używamy tego do obliczania skali, zamiast pełnego GAME_LOGICAL_WIDTH
     private readonly BOARD_LOGICAL_WIDTH = (COLS * TILE_SIZE);
     private readonly BOARD_LOGICAL_HEIGHT = (ROWS * TILE_SIZE);
 
@@ -55,7 +63,19 @@ export class GameScene extends PIXI.Container implements Scene {
         this.renderer = new BoardRenderer(app, this.logic);
         this.addChild(this.renderer); 
 
-        // 2. Warstwa HUD (Interfejs - zawsze na wierzchu)
+        // 2. Warstwa Paneli (L/R)
+        this.panelLeft = new PIXI.Container();
+        this.panelRight = new PIXI.Container();
+        this.panelLeftBg = new PIXI.Graphics();
+        this.panelRightBg = new PIXI.Graphics();
+        
+        this.panelLeft.addChild(this.panelLeftBg);
+        this.panelRight.addChild(this.panelRightBg);
+        
+        this.addChild(this.panelLeft);
+        this.addChild(this.panelRight);
+
+        // 3. Warstwa HUD (Interfejs - zawsze na wierzchu)
         this.hudContainer = new PIXI.Container();
         this.addChild(this.hudContainer);
 
@@ -76,26 +96,31 @@ export class GameScene extends PIXI.Container implements Scene {
     }
 
     private setupUI() {
-        // Wszystko dodajemy do hudContainer
-        
-        // 1. Pasek czasu/ruchów (na samej górze)
-        this.timerBarBg = new PIXI.Graphics();
-        // Rysujemy wstępnie, resize to poprawi
-        this.timerBarBg.rect(0, 0, 100, 6); 
-        this.timerBarBg.fill({ color: 0x000000, alpha: 0.5 });
-        this.hudContainer.addChild(this.timerBarBg);
+        // --- HUD ---
+        // 1. Pasek Główny (Góra)
+        this.primaryBarBg = new PIXI.Graphics();
+        this.primaryBarBg.rect(0, 0, 100, 6); 
+        this.primaryBarBg.fill({ color: 0x000000, alpha: 0.5 });
+        this.hudContainer.addChild(this.primaryBarBg);
+        this.primaryBarFill = new PIXI.Graphics();
+        this.hudContainer.addChild(this.primaryBarFill);
 
-        this.timerBarFill = new PIXI.Graphics();
-        this.hudContainer.addChild(this.timerBarFill);
+        // 2. Pasek Drugorzędny (Pod głównym)
+        this.secondaryBarBg = new PIXI.Graphics();
+        this.secondaryBarBg.rect(0, 0, 100, 6); 
+        this.secondaryBarBg.fill({ color: 0x000000, alpha: 0.3 }); // Nieco jaśniejszy/mniej ważny
+        this.hudContainer.addChild(this.secondaryBarBg);
+        this.secondaryBarFill = new PIXI.Graphics();
+        this.hudContainer.addChild(this.secondaryBarFill);
 
-        // 2. Przycisk wyjścia (wstępnie)
+        // 3. Przycisk wyjścia
         this.exitBtn = new Button("⏏️", 50, 50, 0x000000, () => {
             this.gameManager.resetGame();
             this.backToMenuCallback();
         }, true); 
         this.hudContainer.addChild(this.exitBtn);
 
-        // 3. Status text (opcjonalny debug)
+        // 4. Status text
         this.statusText = new PIXI.Text({
             text: '',
             style: { fontFamily: 'Arial', fontSize: 12, fill: CurrentTheme.textMuted, align: 'center' }
@@ -103,6 +128,26 @@ export class GameScene extends PIXI.Container implements Scene {
         this.statusText.anchor.set(0.5, 0);
         this.statusText.visible = false; 
         this.hudContainer.addChild(this.statusText);
+
+        // --- PANELE (DEBUG VISUALS) ---
+        const drawPlaceholder = (g: PIXI.Graphics, label: string) => {
+            g.clear();
+            g.rect(0, 0, 100, 100); 
+            g.fill({ color: 0x000000, alpha: 0.3 }); 
+            g.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.2 });
+        };
+        drawPlaceholder(this.panelLeftBg, "L");
+        drawPlaceholder(this.panelRightBg, "R");
+        
+        const lText = new PIXI.Text({ text: "L", style: { fill: 0xFFFFFF, fontSize: 32, alpha: 0.2 }});
+        lText.anchor.set(0.5); lText.x = 50; lText.y = 50; 
+        this.panelLeft.addChild(lText);
+        this.panelLeft['debugText'] = lText; 
+
+        const rText = new PIXI.Text({ text: "R", style: { fill: 0xFFFFFF, fontSize: 32, alpha: 0.2 }});
+        rText.anchor.set(0.5); rText.x = 50; rText.y = 50;
+        this.panelRight.addChild(rText);
+        this.panelRight['debugText'] = rText;
     }
 
     public onShow() {
@@ -112,15 +157,12 @@ export class GameScene extends PIXI.Container implements Scene {
         const activeBlocks = BlockRegistry.getAll().slice(0, AppConfig.blockTypes);
         const activeBlockIds = activeBlocks.map(b => b.id);
         
-        // Reset Score UI
         if (this.scoreUI) this.hudContainer.removeChild(this.scoreUI.container);
         if (this.botScoreUI) this.hudContainer.removeChild(this.botScoreUI.container);
 
-        // Tworzymy ScoreUI
         this.scoreUI = new ScoreUI(activeBlockIds, 0, 0);
         this.hudContainer.addChild(this.scoreUI.container);
 
-        // Bot UI
         this.botScoreUI = new ScoreUI(activeBlockIds, 0, 0);
         this.botScoreUI.container.visible = (AppConfig.gameMode === 'VS_AI');
         this.hudContainer.addChild(this.botScoreUI.container);
@@ -139,7 +181,6 @@ export class GameScene extends PIXI.Container implements Scene {
         const levelToLoad = this.pendingLevelConfig || LEVEL_1; 
         this.gameManager.startLevel(levelToLoad); 
 
-        // --- KONFIGURACJA PRZYCISKU EXIT I PASKÓW ---
         const mode = this.gameManager.currentLevelMode;
 
         if (mode === 'GATHERING') {
@@ -169,7 +210,6 @@ export class GameScene extends PIXI.Container implements Scene {
         
         this.logic.on('explode', (data: { id: number, typeId: number, x: number, y: number }) => {
             const currentId = this.gameManager.getCurrentPlayerId();
-            
             if (this.gameManager.currentLevelMode === 'GATHERING') {
                 const global = Resources.getAmount(data.typeId);
                 const session = this.gameManager.getSessionResourceAmount(data.typeId);
@@ -195,7 +235,6 @@ export class GameScene extends PIXI.Container implements Scene {
              this.onDeadlockFixed(fix.id, fix.targetType);
         });
 
-        // Wymuszamy resize, żeby wszystko się ułożyło
         this.resize(this.app.screen.width, this.app.screen.height);
     }
 
@@ -203,7 +242,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.hudContainer.removeChild(this.exitBtn);
         this.exitBtn = new Button(text, 50, 50, 0x000000, callback, true);
         this.hudContainer.addChild(this.exitBtn);
-        // Pozycja zostanie nadana w resize() (wywołane w onShow)
     }
 
     public update(delta: number) {
@@ -211,34 +249,79 @@ export class GameScene extends PIXI.Container implements Scene {
         this.logic.update(delta);
         if (this.scoreUI) this.scoreUI.update(delta);
         
-        this.updateTimeBar();
+        this.updateBars();
         
         const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
         const selectedId = human ? human.getSelectedId() : -1;
         this.renderer.update(delta, selectedId);
     }
 
-    private updateTimeBar() {
-        this.timerBarFill.clear();
+    // --- NOWOŚĆ: Logika wyświetlania dwóch pasków ---
+    private updateBars() {
+        this.primaryBarFill.clear();
+        this.secondaryBarFill.clear();
         const width = this.app.screen.width; 
-        
-        let percent = 0;
-        let color = 0x00FF00;
 
-        if (this.gameManager.movesLeft < 0) {
-            percent = 1.0;
-            color = 0x00AAFF; 
-        } else if (this.gameManager.maxMoves > 0) {
-            percent = this.gameManager.movesLeft / this.gameManager.maxMoves;
-        } else if (this.gameManager.maxTime > 0) {
-            percent = this.gameManager.timeLeft / this.gameManager.maxTime;
+        // Dane z GameManagera
+        const turnTimer = this.gameManager.turnTimer;
+        const maxTurn = this.gameManager.maxTurnTime;
+        const levelTime = this.gameManager.timeLeft;
+        const maxLevelTime = this.gameManager.maxTime;
+        const moves = this.gameManager.movesLeft;
+        const maxMoves = this.gameManager.maxMoves;
+
+        const isVs = AppConfig.gameMode !== 'SOLO';
+        const hasTimeLimit = maxLevelTime > 0;
+        const hasMoveLimit = maxMoves > 0;
+
+        // Lista aktywnych metryk
+        const metrics: { percent: number, color: number, label?: string }[] = [];
+
+        // 1. Priorytet: Czas Tury (tylko w VS/Bot)
+        if (isVs) {
+            let p = turnTimer / maxTurn;
+            let c = 0x00AAFF; // Niebieski (Turn)
+            if (p < 0.3) c = 0xFF0000;
+            metrics.push({ percent: p, color: c });
         }
 
-        if (percent <= 0.2) color = 0xFF0000; 
-        else if (percent <= 0.5) color = 0xFFA500; 
+        // 2. Priorytet: Czas Poziomu
+        if (hasTimeLimit) {
+            let p = levelTime / maxLevelTime;
+            let c = 0x00FF00; // Zielony (Time)
+            if (p < 0.2) c = 0xFF0000;
+            else if (p < 0.5) c = 0xFFA500;
+            metrics.push({ percent: p, color: c });
+        }
 
-        this.timerBarFill.rect(0, 0, width * percent, 6);
-        this.timerBarFill.fill(color);
+        // 3. Priorytet: Ruchy (jeśli nie nieskończone)
+        if (hasMoveLimit) {
+            let p = moves / maxMoves;
+            let c = 0xFFA500; // Pomarańczowy (Moves)
+            if (p < 0.2) c = 0xFF0000;
+            metrics.push({ percent: p, color: c });
+        } else if (moves < 0 && metrics.length === 0) {
+            // Freeplay (Infinite) - pokaż pełny niebieski pasek jeśli nie ma nic innego
+            metrics.push({ percent: 1.0, color: 0x00AAFF });
+        }
+
+        // Rysowanie paska 1
+        if (metrics.length > 0) {
+            this.primaryBarBg.visible = true;
+            this.primaryBarFill.rect(0, 0, width * metrics[0].percent, 6);
+            this.primaryBarFill.fill(metrics[0].color);
+        } else {
+            this.primaryBarBg.visible = false;
+        }
+
+        // Rysowanie paska 2
+        if (metrics.length > 1) {
+            this.secondaryBarBg.visible = true;
+            this.secondaryBarFill.rect(0, 6, width * metrics[1].percent, 6); // Offset Y = 6
+            this.secondaryBarFill.fill(metrics[1].color);
+        } else {
+            this.secondaryBarBg.visible = false;
+        }
     }
 
     private onDeadlockFixed(id: number, type: number) {
@@ -279,61 +362,119 @@ export class GameScene extends PIXI.Container implements Scene {
     }
 
     public resize(width: number, height: number) {
-        // 1. Reset pozycji kontenera (przyklejamy do lewej góry)
         this.x = 0;
         this.y = 0;
         this.scale.set(1);
 
-        const HEADER_HEIGHT = 60; // Zarezerwowane miejsce na HUD
-        const PADDING = 10;
-        const BOTTOM_PADDING = 20; // Odstęp planszy od dołu ekranu
+        const HEADER_HEIGHT = 60; 
+        const BOTTOM_PADDING = 20;
+        const PANEL_GAP = 10; 
 
-        // --- 2. Pozycjonowanie HUD (Przyklejone do góry) ---
-        
-        // Pasek czasu na pełną szerokość
-        this.timerBarBg.clear();
-        this.timerBarBg.rect(0, 0, width, 6);
-        this.timerBarBg.fill({ color: 0x000000, alpha: 0.5 });
-        this.updateTimeBar();
+        // 1. Orientacja
+        const isPortrait = height > width;
 
-        // ScoreUI (Lewy Górny róg)
-        if (this.scoreUI) {
-            this.scoreUI.container.x = PADDING;
-            this.scoreUI.container.y = 15; // Trochę pod paskiem czasu
+        let reservedPanelHeight = 0; 
+        if (isPortrait) {
+            reservedPanelHeight = Math.max(120, height * 0.15);
+        } else {
+            reservedPanelHeight = 0;
         }
 
-        // Exit Button (Prawy Górny róg)
+        // 2. HUD
+        this.primaryBarBg.clear();
+        this.primaryBarBg.rect(0, 0, width, 6);
+        this.primaryBarBg.fill({ color: 0x000000, alpha: 0.5 });
+        
+        this.secondaryBarBg.clear();
+        this.secondaryBarBg.rect(0, 6, width, 6);
+        this.secondaryBarBg.fill({ color: 0x000000, alpha: 0.3 });
+
+        if (this.scoreUI) {
+            this.scoreUI.container.x = 10;
+            this.scoreUI.container.y = 20; // Pod paskami (6+6=12)
+        }
         if (this.exitBtn) {
             this.exitBtn.x = width - 40; 
-            this.exitBtn.y = 35; // Wycentrowane w pionie HUDa
+            this.exitBtn.y = 40;
         }
-
-        // Bot UI (obok Exit Button)
         if (this.botScoreUI && this.botScoreUI.container.visible) {
             this.botScoreUI.container.x = width - 250; 
-            this.botScoreUI.container.y = 15;
+            this.botScoreUI.container.y = 20;
         }
 
-        // --- 3. Pozycjonowanie PLANSZY (Przyklejone do dołu) ---
-        
-        const availableWidth = width;
-        // Dostępna wysokość to wszystko pod HUD-em, minus margines dolny
-        const availableHeight = height - HEADER_HEIGHT - BOTTOM_PADDING; 
-        
-        // Obliczamy skalę, żeby plansza zmieściła się w dostępnym obszarze
-        // (zarówno na szerokość jak i na wysokość)
+        // 3. Plansza
+        const availableWidth = isPortrait ? width : width * 0.6; 
+        const availableHeight = height - HEADER_HEIGHT - BOTTOM_PADDING - reservedPanelHeight;
+
         const scale = Math.min(
             (availableWidth - 20) / this.BOARD_LOGICAL_WIDTH, 
             availableHeight / this.BOARD_LOGICAL_HEIGHT
-        ); 
+        );
         
         this.renderer.scale.set(scale);
-
-        // Centrowanie w poziomie (X)
         this.renderer.x = (width - (this.BOARD_LOGICAL_WIDTH * scale)) / 2;
-        
-        // Przyciąganie do dołu (Y)
-        // Pozycja Y = Wysokość ekranu - Wysokość planszy po skalowaniu - Margines dolny
         this.renderer.y = height - (this.BOARD_LOGICAL_HEIGHT * scale) - BOTTOM_PADDING;
+
+        // 4. Panele
+        if (isPortrait) {
+            const panelY = HEADER_HEIGHT;
+            const panelH = this.renderer.y - HEADER_HEIGHT - PANEL_GAP;
+            const panelW = (width - 30) / 2; 
+
+            this.panelLeftBg.clear();
+            this.panelLeftBg.roundRect(0, 0, panelW, panelH, 10);
+            this.panelLeftBg.fill({ color: 0x000000, alpha: 0.2 }); 
+            this.panelLeftBg.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 }); 
+            
+            this.panelLeft.x = 10;
+            this.panelLeft.y = panelY;
+
+            this.panelRightBg.clear();
+            this.panelRightBg.roundRect(0, 0, panelW, panelH, 10);
+            this.panelRightBg.fill({ color: 0x000000, alpha: 0.2 });
+            this.panelRightBg.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 });
+
+            this.panelRight.x = 10 + panelW + 10; 
+            this.panelRight.y = panelY;
+            
+            if (this.panelLeft['debugText']) {
+                this.panelLeft['debugText'].x = panelW / 2; this.panelLeft['debugText'].y = panelH / 2;
+            }
+            if (this.panelRight['debugText']) {
+                this.panelRight['debugText'].x = panelW / 2; this.panelRight['debugText'].y = panelH / 2;
+            }
+
+        } else {
+            const panelY = HEADER_HEIGHT;
+            const panelH = height - HEADER_HEIGHT - BOTTOM_PADDING;
+            
+            const leftSpace = this.renderer.x - 20;
+            const rightSpace = width - (this.renderer.x + this.renderer.width) - 20;
+
+            const wL = Math.max(0, leftSpace);
+            this.panelLeftBg.clear();
+            this.panelLeftBg.roundRect(0, 0, wL, panelH, 10);
+            this.panelLeftBg.fill({ color: 0x000000, alpha: 0.2 });
+            this.panelLeftBg.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 });
+
+            this.panelLeft.x = 10;
+            this.panelLeft.y = panelY;
+
+            const wR = Math.max(0, rightSpace);
+            this.panelRightBg.clear();
+            this.panelRightBg.roundRect(0, 0, wR, panelH, 10);
+            this.panelRightBg.fill({ color: 0x000000, alpha: 0.2 });
+            this.panelRightBg.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 });
+
+            this.panelRight.x = this.renderer.x + this.renderer.width + 10;
+            this.panelRight.y = panelY;
+
+            if (this.panelLeft['debugText']) {
+                this.panelLeft['debugText'].x = wL / 2; this.panelLeft['debugText'].y = panelH / 2;
+            }
+            if (this.panelRight['debugText']) {
+                this.panelRight['debugText'].x = wR / 2; this.panelRight['debugText'].y = panelH / 2;
+            }
+        }
     }
 }

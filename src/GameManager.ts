@@ -22,14 +22,17 @@ export class GameManager {
     public movesLeft: number = 0;
     public timeLeft: number = 0;
     
-    // NOWOŚĆ: Liczniki początkowe (do obliczania paska postępu w UI)
+    // Liczniki początkowe (do obliczania paska postępu w UI)
     public maxMoves: number = 0;
     public maxTime: number = 0;
 
     public turnTimer: number = 0;
+    // NOWOŚĆ: Getter do limitu czasu tury (dla UI)
+    public get maxTurnTime(): number { return TURN_TIME_LIMIT; }
+
     private isProcessingTurn: boolean = false; 
     public isGameOver: boolean = false;
-    public gameStatusText: string = ""; // Zostawiamy dla kompatybilności, ale GameScene może to ignorować
+    public gameStatusText: string = ""; 
 
     public onGameFinished: ((reason: string, win: boolean) => void) | null = null;
     public onDeadlockFixed: ((id: number, type: number) => void) | null = null;
@@ -67,7 +70,7 @@ export class GameManager {
 
         // Ustawiamy limity bieżące i maksymalne
         this.movesLeft = level.moveLimit;
-        this.maxMoves = level.moveLimit; // Może być -1 dla Gathering
+        this.maxMoves = level.moveLimit; 
 
         this.timeLeft = level.timeLimit;
         this.maxTime = level.timeLimit;
