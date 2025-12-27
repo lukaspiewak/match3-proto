@@ -1,186 +1,121 @@
 import * as PIXI from 'pixi.js';
 import { BlockRegistry } from './BlockDef';
 
+// Klasa pomocnicza: Pojedynczy slot surowca
+class ResourceSlot extends PIXI.Container {
+    private bg: PIXI.Graphics;
+    private progressBar: PIXI.Graphics;
+    private iconSprite: PIXI.Sprite | PIXI.Text;
+    private label: PIXI.Text;
+    
+    // Konfiguracja wyglądu
+    private readonly WIDTH = 60;
+    private readonly HEIGHT = 30; // Niskie kapsułki
+    private readonly RADIUS = 15; // Pełne zaokrąglenie
+
+    constructor(public blockId: number, color: number, iconAlias: string, symbol: string) {
+        super();
+        
+        // 1. Tło (ciemne koryto)
+        this.bg = new PIXI.Graphics();
+        this.bg.roundRect(0, 0, this.WIDTH, this.HEIGHT, this.RADIUS);
+        this.bg.fill({ color: 0x1A2024, alpha: 0.8 });
+        this.bg.stroke({ width: 2, color: 0x000000, alpha: 0.5 });
+        this.addChild(this.bg);
+
+        // 2. Pasek Postępu (Wypełnienie)
+        this.progressBar = new PIXI.Graphics();
+        // Domyślny stan: pełny lub pusty, zależnie od logiki. Rysujemy dynamicznie.
+        this.addChild(this.progressBar);
+        this.updateProgress(0, color); // Start od 0
+
+        // 3. Ikona (po lewej)
+        if (PIXI.Assets.cache.has(iconAlias)) {
+            const tex = PIXI.Assets.get(iconAlias);
+            this.iconSprite = new PIXI.Sprite(tex);
+            (this.iconSprite as PIXI.Sprite).anchor.set(0.5);
+            this.iconSprite.x = 18; // Pozycja ikony
+            this.iconSprite.y = this.HEIGHT / 2;
+            const scale = 20 / Math.max(tex.width, tex.height); // Mała ikona (20px)
+            this.iconSprite.scale.set(scale);
+            (this.iconSprite as PIXI.Sprite).tint = 0xFFFFFF; // Biała ikona dla kontrastu
+        } else {
+            this.iconSprite = new PIXI.Text({ text: symbol, style: { fontSize: 14, fill: 0xFFFFFF } });
+            (this.iconSprite as PIXI.Text).anchor.set(0.5);
+            this.iconSprite.x = 18;
+            this.iconSprite.y = this.HEIGHT / 2;
+        }
+        this.addChild(this.iconSprite);
+
+        // 4. Licznik (po prawej)
+        this.label = new PIXI.Text({
+            text: '0',
+            style: { fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', fill: 0xFFFFFF, stroke: { color: 0x000000, width: 2 } }
+        });
+        this.label.anchor.set(0.5); // Środek
+        this.label.x = this.WIDTH - 18; // Po prawej
+        this.label.y = this.HEIGHT / 2;
+        this.addChild(this.label);
+    }
+
+    public updateValue(amount: number) {
+        this.label.text = amount.toString();
+        // Opcjonalnie: zmiana koloru przy małej ilości
+        if (amount <= 0) this.label.style.fill = 0xAAAAAA;
+        else this.label.style.fill = 0xFFFFFF;
+    }
+
+    public updateProgress(ratio: number, color: number) {
+        this.progressBar.clear();
+        if (ratio > 0.05) { // Rysuj tylko jeśli coś widać
+            // Clamp 0-1
+            const r = Math.max(0, Math.min(ratio, 1.0));
+            this.progressBar.roundRect(0, 0, this.WIDTH * r, this.HEIGHT, this.RADIUS);
+            this.progressBar.fill({ color: color, alpha: 0.6 }); // Półprzezroczysty pasek
+        }
+    }
+}
+
 export class ScoreUI {
     public container: PIXI.Container;
     
-    // Przechowujemy referencje do pasków, by móc je aktualizować
-    private bars: Map<number, PIXI.Graphics> = new Map();
-    private flashes: Map<number, PIXI.Graphics> = new Map();
-    private countLabels: Map<number, PIXI.Text> = new Map();
+    // Mapa slotów
+    private slots: Map<number, ResourceSlot> = new Map();
 
-    private values: number[] = [];
-    private maxScore: number;
-    
-    // Konfiguracja
-    private readonly BAR_WIDTH = 16;
-    private readonly BAR_HEIGHT = 70;
-    private readonly SPACING = 8;
-    private readonly ICON_SIZE = 16;
-    private readonly PADDING = 7;
-    private readonly BAR_INNER_PADDING = 2; 
-    
-    private readonly COLOR_PANEL_BG = 0x2F3539; 
-    private readonly COLOR_SLOT_BG = 0x1A2024;  
-
-    constructor(activeBlockIds: number[], yPosition: number, maxScore: number = 100) {
-        this.maxScore = maxScore;
+    constructor(activeBlockIds: number[], x: number, y: number) {
         this.container = new PIXI.Container();
-        this.container.y = yPosition;
+        this.container.x = x;
+        this.container.y = y;
 
-        this.values = new Array(activeBlockIds.length).fill(0);
+        const GAP = 10;
+        let currentX = 0;
 
-        // 1. Tło
-        const totalWidth = (this.PADDING * 2) + (activeBlockIds.length * this.BAR_WIDTH) + ((activeBlockIds.length - 1) * this.SPACING);
-        const totalHeight = (this.PADDING * 2) + this.ICON_SIZE + 5 + this.BAR_HEIGHT;
-
-        const bgPanel = new PIXI.Graphics();
-        bgPanel.rect(0, 0, totalWidth, totalHeight);
-        bgPanel.fill({ color: this.COLOR_PANEL_BG, alpha: 0.9 });
-        bgPanel.stroke({ width: 2, color: 0x000000, alpha: 0.5 });
-        this.container.addChild(bgPanel);
-
-        // 2. Kolumny
-        activeBlockIds.forEach((blockId, index) => {
-            const blockDef = BlockRegistry.getById(blockId);
-            const groupX = this.PADDING + index * (this.BAR_WIDTH + this.SPACING);
-            const groupY = this.PADDING;
-
-            // A. Ikona
-            this.createIcon(blockDef, groupX + this.BAR_WIDTH / 2, groupY + this.ICON_SIZE / 2);
-
-            // B. Licznik
-            const countText = new PIXI.Text({
-                text: '', 
-                style: {
-                    fontFamily: 'Arial', fontSize: 10, fontWeight: 'bold', fill: 0xFFFFFF,
-                    stroke: { color: 0x000000, width: 2 }, align: 'center'
-                }
-            });
-            countText.anchor.set(0.5, 1);
-            countText.x = groupX + this.BAR_WIDTH / 2;
-            countText.y = groupY;
-            this.container.addChild(countText);
-            this.countLabels.set(blockId, countText);
-
-            // C. Slot
-            const slotY = groupY + this.ICON_SIZE + 5; 
-            const slot = new PIXI.Graphics();
-            slot.rect(groupX, slotY, this.BAR_WIDTH, this.BAR_HEIGHT);
-            slot.fill(this.COLOR_SLOT_BG);
+        // Tworzymy poziomy pasek slotów
+        activeBlockIds.forEach((blockId) => {
+            const def = BlockRegistry.getById(blockId);
+            const slot = new ResourceSlot(blockId, def.color, def.assetAlias, def.symbol);
+            
+            slot.x = currentX;
             this.container.addChild(slot);
+            this.slots.set(blockId, slot);
 
-            const innerWidth = this.BAR_WIDTH - (this.BAR_INNER_PADDING * 2);
-            const innerHeight = this.BAR_HEIGHT - (this.BAR_INNER_PADDING * 2);
-            const contentX = groupX + this.BAR_INNER_PADDING;
-            const contentY = slotY + this.BAR_HEIGHT - this.BAR_INNER_PADDING;
-
-            // D. Pasek (Bar)
-            const fill = new PIXI.Graphics();
-            fill.rect(0, 0, innerWidth, innerHeight);
-            fill.fill(blockDef.color); 
-            fill.x = contentX;
-            fill.y = contentY; 
-            fill.pivot.y = innerHeight;   
-            fill.scale.y = 0;                 
-            this.container.addChild(fill);
-            // Zapisujemy referencję do Mapy
-            this.bars.set(blockId, fill);
-
-            // E. Flash
-            const flash = new PIXI.Graphics();
-            flash.rect(0, 0, innerWidth, innerHeight);
-            flash.fill(0xFFFFFF); 
-            flash.x = contentX;
-            flash.y = contentY;
-            flash.pivot.y = innerHeight;
-            flash.scale.y = 0;
-            flash.alpha = 0; 
-            flash.blendMode = 'add'; 
-            this.container.addChild(flash);
-            this.flashes.set(blockId, flash);
+            currentX += 60 + GAP; // Szerokość slotu + odstęp
         });
     }
 
-    // Aktualizacja etykiety tekstowej
-    public setStockLabel(typeId: number, amount: number | string) {
-        const label = this.countLabels.get(typeId);
-        if (label) {
-            label.text = amount.toString();
-            if (typeof amount === 'number' && amount < 5) label.style.fill = 0xFF5555;
-            else label.style.fill = 0xFFFFFF;
+    // Uniwersalna metoda aktualizacji
+    public updateState(typeId: number, amount: number, ratio: number = 0) {
+        const slot = this.slots.get(typeId);
+        if (slot) {
+            slot.updateValue(amount);
+            slot.updateProgress(ratio, BlockRegistry.getById(typeId).color);
         }
     }
 
-    // --- NOWOŚĆ: Precyzyjna kontrola paska (dla trybu Construction) ---
-    public updateBarValue(typeId: number, currentValue: number, maxValue: number) {
-        const bar = this.bars.get(typeId);
-        const flash = this.flashes.get(typeId);
-        
-        if (bar && maxValue > 0) {
-            const ratio = Math.max(0, Math.min(currentValue / maxValue, 1.0));
-            
-            // Animacja zmiany (proste przypisanie dla płynności przy update)
-            bar.scale.y = ratio;
-
-            if (flash) {
-                flash.scale.y = ratio;
-                flash.alpha = 0.8; // Błysk przy zmianie
-            }
-        } else if (bar && maxValue === 0) {
-            // Jeśli nie mieliśmy tego surowca na starcie (0/0) -> pusty pasek
-            bar.scale.y = 0;
-        }
+    // Metody kompatybilności (jeśli potrzebne)
+    public reset() {
+        this.slots.forEach(s => { s.updateValue(0); s.updateProgress(0, 0); });
     }
-
-    // Stara metoda addScore (dla trybu STANDARD)
-    public addScore(typeId: number) {
-        if (this.values[typeId] === undefined) return;
-        if (this.values[typeId] < this.maxScore) {
-            this.values[typeId]++;
-            this.updateBarValue(typeId, this.values[typeId], this.maxScore);
-        }
-    }
-
-    public update(delta: number) {
-        for (const flash of this.flashes.values()) {
-            if (flash.alpha > 0) {
-                flash.alpha -= 0.05 * delta; 
-                if (flash.alpha < 0) flash.alpha = 0;
-            }
-        }
-    }
-
-    public reset(newMaxScore: number) {
-        this.maxScore = newMaxScore;
-        this.values.fill(0);
-        for (const bar of this.bars.values()) bar.scale.y = 0;
-        for (const flash of this.flashes.values()) { flash.scale.y = 0; flash.alpha = 0; }
-        this.countLabels.forEach(label => label.text = "");
-    }
-
-    private createIcon(blockDef: any, x: number, y: number) {
-        const alias = blockDef.assetAlias;
-        if (PIXI.Assets.cache.has(alias)) {
-            const texture = PIXI.Assets.get(alias);
-            const sprite = new PIXI.Sprite(texture);
-            sprite.anchor.set(0.5);
-            sprite.x = x;
-            sprite.y = y;
-            const scale = this.ICON_SIZE / Math.max(texture.width, texture.height);
-            sprite.scale.set(scale); 
-            sprite.tint = blockDef.iconColor; 
-            this.container.addChild(sprite);
-        } else {
-            const label = new PIXI.Text({
-                text: blockDef.symbol,
-                style: {
-                    fontFamily: 'Arial', fontSize: 12, fontWeight: 'bold',
-                    fill: blockDef.iconColor, align: 'center'
-                }
-            });
-            label.anchor.set(0.5); label.x = x; label.y = y;
-            this.container.addChild(label);
-        }
-    }
+    
+    public update(delta: number) {} // Brak animacji w tej wersji
 }

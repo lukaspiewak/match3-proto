@@ -7,8 +7,8 @@ export const I_ = 300; // Ice
 // Typy Celów
 export type GoalType = 'SCORE' | 'COLLECT';
 
-// NOWOŚĆ: Tryb poziomu
-export type LevelMode = 'STANDARD' | 'CONSTRUCTION';
+// NOWOŚĆ: Tryb poziomu (dodano GATHERING)
+export type LevelMode = 'STANDARD' | 'CONSTRUCTION' | 'GATHERING';
 
 export interface LevelGoal {
     type: GoalType;
@@ -19,9 +19,9 @@ export interface LevelGoal {
 export interface LevelConfig {
     id: string;
     name: string;
-    mode: LevelMode; // NOWOŚĆ: Flaga trybu
+    mode: LevelMode; 
     layout: number[][];
-    moveLimit: number;
+    moveLimit: number; // Jeśli -1 lub 0 w GATHERING -> brak limitu
     timeLimit: number;
     goals: LevelGoal[];
     availableBlockIds: number[]; 
@@ -31,7 +31,7 @@ export interface LevelConfig {
 export const LEVEL_1: LevelConfig = {
     id: "level_1",
     name: "Level 1: The Mine",
-    mode: 'STANDARD', // Zbieramy surowce
+    mode: 'STANDARD', 
     moveLimit: 20,
     timeLimit: 0,
     availableBlockIds: [0, 1, 2, 3],
@@ -40,10 +40,10 @@ export const LEVEL_1: LevelConfig = {
     ],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, S_, S_, S_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
-        [R_, R_, R_, R_, R_, R_, R_],
-        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, S_, R_, S_, R_, R_],
         [R_, R_, R_, I_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
@@ -63,36 +63,34 @@ export const LEVEL_2: LevelConfig = {
         { type: 'SCORE', amount: 3000 }
     ],
     layout: [
-        [R_, R_, R_, R_, R_, R_, R_],
-        [R_, I_, I_, I_, I_, I_, R_],
-        [R_, I_, R_, R_, R_, I_, R_],
-        [R_, I_, R_, R_, R_, I_, R_],
-        [R_, I_, R_, R_, R_, I_, R_],
-        [R_, I_, I_, I_, I_, I_, R_],
-        [R_, R_, R_, R_, R_, R_, R_],
+        [S_, S_, S_, S_, S_, S_, S_],
+        [S_, I_, I_, I_, I_, I_, S_],
+        [S_, I_, R_, R_, R_, I_, S_],
+        [S_, I_, R_, R_, R_, I_, S_],
+        [S_, I_, R_, R_, R_, I_, S_],
+        [S_, I_, I_, I_, I_, I_, S_],
+        [S_, S_, S_, R_, S_, S_, S_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_]
     ]
 };
 
-// --- NOWOŚĆ: POZIOM 3: Budowa Spichlerza (Construction) ---
-// Wymaga zużycia 10 Kamieni (ID 200) i 1000 punktów.
-// Każde zbicie klocka (np. serduszka, monety) będzie je ODEJMOWAĆ z naszego konta.
+// --- POZIOM 3: Budowa Spichlerza (Construction) ---
 export const LEVEL_3: LevelConfig = {
     id: "level_3",
     name: "Level 3: Build Granary",
     mode: 'CONSTRUCTION', 
-    moveLimit: 30, // Mamy 30 ruchów, żeby "wydać" surowce
+    moveLimit: 30, 
     timeLimit: 0,
     availableBlockIds: [0, 1, 2, 3], 
     goals: [
-        { type: 'COLLECT', targetId: 2, amount: 10 }, // Musimy "zużyć" 10 drewna
-        { type: 'SCORE', amount: 1000 } // Musimy wygenerować 1000 punktów "kosztu robocizny"
+        { type: 'COLLECT', targetId: 2, amount: 10 }, 
+        { type: 'SCORE', amount: 1000 } 
     ],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
-        [R_, R_, R_, I_, R_, R_, R_], // Dużo kamieni do zużycia
+        [R_, R_, R_, I_, R_, R_, R_], 
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_],
@@ -102,4 +100,28 @@ export const LEVEL_3: LevelConfig = {
     ]
 };
 
-export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3];
+// --- NOWOŚĆ: POZIOM 4: Las (Gathering / Freeplay) ---
+// Brak limitów czasowych/ruchów (chyba że gracz sam wyjdzie).
+// Cele są puste, bo celem jest samo zbieranie.
+export const LEVEL_4: LevelConfig = {
+    id: "level_4",
+    name: "Expedition: Forest",
+    mode: 'GATHERING',
+    moveLimit: -1, // Nieskończoność
+    timeLimit: 0,
+    availableBlockIds: [0, 1, 2], // Głównie drewno i podstawowe
+    goals: [], 
+    layout: [
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_]
+    ]
+};
+
+export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4];

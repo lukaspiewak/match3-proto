@@ -15,19 +15,21 @@ export class GameManager {
     private goalProgress: number[] = [];
     private currentScore: number = 0;
     
-    // Obecny stan zasobów w trakcie gry
     private sessionInventory: { [id: number]: number } = {};
-    // NOWOŚĆ: Stan zasobów na początku poziomu (jako punkt odniesienia dla pasków)
     private startInventory: { [id: number]: number } = {};
 
+    // Liczniki bieżące
     public movesLeft: number = 0;
     public timeLeft: number = 0;
+    
+    // NOWOŚĆ: Liczniki początkowe (do obliczania paska postępu w UI)
+    public maxMoves: number = 0;
+    public maxTime: number = 0;
+
     public turnTimer: number = 0;
     private isProcessingTurn: boolean = false; 
     public isGameOver: boolean = false;
-    public globalMovesMade: number = 0; 
-    public globalTimeElapsed: number = 0;
-    public gameStatusText: string = "";
+    public gameStatusText: string = ""; // Zostawiamy dla kompatybilności, ale GameScene może to ignorować
 
     public onGameFinished: ((reason: string, win: boolean) => void) | null = null;
     public onDeadlockFixed: ((id: number, type: number) => void) | null = null;
@@ -46,22 +48,12 @@ export class GameManager {
         this.onBlockDestroyed(data.typeId);
     };
 
-    // --- NOWE METODY POMOCNICZE DLA UI ---
-    
-    public getSessionResourceAmount(typeId: number): number {
-        return this.sessionInventory[typeId] || 0;
-    }
+    // --- UI Helpers ---
+    public getSessionResourceAmount(typeId: number): number { return this.sessionInventory[typeId] || 0; }
+    public getStartResourceAmount(typeId: number): number { return this.startInventory[typeId] || 0; }
+    public get currentLevelMode() { return this.currentLevel ? this.currentLevel.mode : 'STANDARD'; }
 
-    // Zwraca ilość zasobu, jaką mieliśmy na starcie poziomu (do obliczania skali paska)
-    public getStartResourceAmount(typeId: number): number {
-        return this.startInventory[typeId] || 0;
-    }
-
-    public get currentLevelMode(): 'STANDARD' | 'CONSTRUCTION' {
-        return this.currentLevel ? this.currentLevel.mode : 'STANDARD';
-    }
-
-    // ... (metody registerPlayer, clearPlayers, getCurrentPlayerId bez zmian) ...
+    // --- Core Logic ---
     public registerPlayer(player: PlayerController) { this.players.push(player); }
     public clearPlayers() { this.players = []; }
     public getCurrentPlayerId(): number { if (!this.players[this.currentPlayerIndex]) return -1; return this.players[this.currentPlayerIndex].id; }
@@ -73,35 +65,44 @@ export class GameManager {
         this.isGameOver = false;
         this.currentScore = 0;
 
+        // Ustawiamy limity bieżące i maksymalne
         this.movesLeft = level.moveLimit;
+        this.maxMoves = level.moveLimit; // Może być -1 dla Gathering
+
         this.timeLeft = level.timeLimit;
+        this.maxTime = level.timeLimit;
+
         this.goalProgress = level.goals.map(() => 0);
         
         if (level.mode === 'CONSTRUCTION') {
             this.sessionInventory = Resources.getAll();
-            // NOWOŚĆ: Kopiujemy stan początkowy
             this.startInventory = { ...this.sessionInventory };
-            console.log("🏗️ Construction Mode: Loaded inventory:", this.sessionInventory);
         } else {
             this.sessionInventory = {};
             this.startInventory = {};
-            console.log("🎒 Standard Mode: Loot bag empty.");
         }
 
         console.log(`Loading Level: ${level.id} (${level.mode})`);
         this.logic.initBoard(level.layout, level.availableBlockIds);
-
-        this.updateStatusText();
         this.startTurn();
     }
 
-    // ... (reszta metod bez zmian logicznych, skrócona dla czytelności) ...
+    public finishExpedition() {
+        if (!this.currentLevel || this.isGameOver) return;
+        if (this.currentLevel.mode === 'GATHERING') {
+            this.finishGame("EXPEDITION COMPLETE", true);
+        } else {
+            this.finishGame("SURRENDERED", false);
+        }
+    }
+
     public startGame() { this.logic.initBoard(); this.startTurn(); }
     public resetGame() { this.isGameOver = true; this.players = []; this.currentLevel = null; }
     
     public update(delta: number) {
         if (this.isGameOver || !this.currentLevel) return;
         const dt = delta / 60.0;
+
         if (this.currentLevel.timeLimit > 0) {
             this.timeLeft -= dt;
             if (this.timeLeft <= 0) {
@@ -111,18 +112,20 @@ export class GameManager {
                 return;
             }
         }
+
         if (!this.logic.cells.every(c => c.state === CellState.IDLE)) {
             this.isProcessingTurn = true;
         } else if (this.isProcessingTurn) {
             this.isProcessingTurn = false;
             this.endTurn(); 
         }
+
         if (AppConfig.gameMode !== 'SOLO' && !this.isProcessingTurn) {
              this.turnTimer -= dt;
              if (this.turnTimer <= 0) this.endTurn();
         }
+
         if (this.players[this.currentPlayerIndex]) this.players[this.currentPlayerIndex].update(delta);
-        this.updateStatusText();
     }
 
     public isMyTurn(playerId: number): boolean {
@@ -147,15 +150,13 @@ export class GameManager {
 
     private onBlockDestroyed(typeId: number) {
         if (!this.currentLevel || this.isGameOver) return;
-
         this.currentScore += 10;
 
         if (this.currentLevel.mode === 'CONSTRUCTION') {
             if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]--; 
-            
             if (this.sessionInventory[typeId] < 0) {
-                this.finishGame(`BANKRUPTCY! (Missing Block ${typeId})`, false);
+                this.finishGame(`BANKRUPTCY!`, false);
                 return;
             }
         } else {
@@ -176,10 +177,13 @@ export class GameManager {
 
     private checkWinLossCondition() {
         if (!this.currentLevel || this.isGameOver) return;
+        if (this.currentLevel.mode === 'GATHERING') return;
+
         let allGoalsMet = true;
         this.currentLevel.goals.forEach((goal, index) => {
             if (this.goalProgress[index] < goal.amount) allGoalsMet = false;
         });
+
         if (allGoalsMet) {
             this.finishGame("LEVEL COMPLETE!", true);
             return;
@@ -201,23 +205,8 @@ export class GameManager {
                 }
             }
         }
+        console.log(`🏁 GAME OVER: ${reason}`);
         if (this.onGameFinished) this.onGameFinished(reason, win);
-    }
-
-    private updateStatusText() {
-        if (!this.currentLevel) return;
-        let status = "";
-        if (this.currentLevel.mode === 'CONSTRUCTION') status += "[CONSTRUCTION MODE]\n";
-        this.currentLevel.goals.forEach((goal, i) => {
-            const current = this.goalProgress[i];
-            const max = goal.amount;
-            const label = this.currentLevel?.mode === 'CONSTRUCTION' && goal.type === 'COLLECT' ? 'Spend ID' : (goal.type === 'COLLECT' ? 'Collect ID' : 'Score');
-            if (goal.type === 'COLLECT') status += `${label} ${goal.targetId}: ${current}/${max}\n`;
-            else status += `${label}: ${current}/${max}\n`;
-        });
-        if (this.currentLevel.moveLimit > 0) status += `Moves: ${this.movesLeft}`;
-        else if (this.currentLevel.timeLimit > 0) status += `Time: ${Math.ceil(this.timeLeft)}s`;
-        this.gameStatusText = status;
     }
 
     private startTurn() {
