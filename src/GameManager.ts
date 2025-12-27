@@ -4,7 +4,6 @@ import {
     PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig 
 } from './Config';
 import { type LevelConfig } from './LevelDef';
-// NOWOŚĆ: Import Resources
 import { Resources } from './core/ResourceManager';
 
 export class GameManager {
@@ -17,7 +16,6 @@ export class GameManager {
     private goalProgress: number[] = [];
     private currentScore: number = 0;
     
-    // NOWOŚĆ: Tymczasowy magazyn łupów z obecnego poziomu
     private levelLoot: { [id: number]: number } = {};
 
     // Liczniki
@@ -39,11 +37,20 @@ export class GameManager {
     constructor(logic: BoardLogic) {
         this.logic = logic;
         this.turnTimer = TURN_TIME_LIMIT;
-
-        this.logic.on('explode', (data: { id: number, typeId: number }) => {
-            this.onBlockDestroyed(data.typeId);
-        });
+        // ZMIANA: Przeniesiono podpinanie zdarzeń do bindEvents()
     }
+
+    // --- NOWOŚĆ: Metoda do odświeżania nasłuchu ---
+    public bindEvents() {
+        // Najpierw usuwamy stare (dla bezpieczeństwa), potem dodajemy nowe
+        this.logic.off('explode', this.onExplodeHandler);
+        this.logic.on('explode', this.onExplodeHandler);
+    }
+
+    // Handler jako funkcja strzałkowa, by zachować kontekst 'this'
+    private onExplodeHandler = (data: { id: number, typeId: number }) => {
+        this.onBlockDestroyed(data.typeId);
+    };
 
     public registerPlayer(player: PlayerController) {
         this.players.push(player);
@@ -69,8 +76,6 @@ export class GameManager {
         this.timeLeft = level.timeLimit;
         
         this.goalProgress = level.goals.map(() => 0);
-        
-        // NOWOŚĆ: Reset łupów na starcie poziomu
         this.levelLoot = {};
 
         console.log(`Loading Level: ${level.id}`);
@@ -157,11 +162,9 @@ export class GameManager {
 
         this.currentScore += 10;
 
-        // NOWOŚĆ: Zbieranie łupów do tymczasowego worka
         if (!this.levelLoot[typeId]) this.levelLoot[typeId] = 0;
         this.levelLoot[typeId]++;
 
-        // Aktualizacja celów poziomu
         this.currentLevel.goals.forEach((goal, index) => {
             if (goal.type === 'COLLECT' && goal.targetId === typeId) {
                 this.goalProgress[index]++;
@@ -195,7 +198,6 @@ export class GameManager {
         this.isGameOver = true;
         this.gameStatusText = win ? "VICTORY!" : "DEFEAT";
         
-        // --- NOWOŚĆ: Przekazanie łupów do globalnego magazynu tylko przy wygranej ---
         if (win) {
             console.log("💰 Loot collected:", this.levelLoot);
             for (const [id, amount] of Object.entries(this.levelLoot)) {

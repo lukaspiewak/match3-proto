@@ -13,7 +13,6 @@ import {
 } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
-// Importujemy typ, ale nie konkretny poziom (ten przyjdzie z zewnątrz)
 import { type LevelConfig, LEVEL_1 } from '../LevelDef'; 
 
 export class GameScene extends PIXI.Container implements Scene {
@@ -30,7 +29,6 @@ export class GameScene extends PIXI.Container implements Scene {
     private statusText!: PIXI.Text;
     
     private backToMenuCallback: () => void;
-    // NOWOŚĆ: Przechowujemy wybrany poziom
     private pendingLevelConfig: LevelConfig | null = null;
 
     private readonly GAME_LOGICAL_WIDTH = (COLS * TILE_SIZE) + 20;
@@ -58,7 +56,6 @@ export class GameScene extends PIXI.Container implements Scene {
         this.gameManager.onGameFinished = (reason, win) => this.onGameFinished(reason, win);
     }
 
-    // Metoda wywoływana przez main.ts przed pokazaniem sceny
     public setCurrentLevel(level: LevelConfig) {
         this.pendingLevelConfig = level;
     }
@@ -142,12 +139,17 @@ export class GameScene extends PIXI.Container implements Scene {
 
         this.renderer.initVisuals();
 
-        // --- ZMIANA: Używamy poziomu wybranego w menu ---
-        const levelToLoad = this.pendingLevelConfig || LEVEL_1; // Fallback
+        const levelToLoad = this.pendingLevelConfig || LEVEL_1; 
         this.gameManager.startLevel(levelToLoad); 
 
+        // 1. Czyścimy stare listenery (to usuwało nasłuch GameManagera)
         this.logic.removeAllListeners(); 
+        
+        // 2. Podpinamy renderera
         this.renderer.bindEvents(); 
+        
+        // 3. ZMIANA: Ponownie podpinamy GameManagera!
+        this.gameManager.bindEvents();
 
         this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
         
