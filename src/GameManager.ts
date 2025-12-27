@@ -1,7 +1,7 @@
 import { BoardLogic } from './BoardLogic';
 import { PlayerController } from './PlayerController';
-import { 
-    PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig 
+import {
+    PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig
 } from './Config';
 import { type LevelConfig } from './LevelDef'; // Import definicji
 
@@ -20,12 +20,12 @@ export class GameManager {
     public timeLeft: number = 0;
 
     public turnTimer: number = 0;
-    private isProcessingTurn: boolean = false; 
+    private isProcessingTurn: boolean = false;
 
     public isGameOver: boolean = false;
     public globalMovesMade: number = 0; // Legacy (dla statystyk ogólnych)
     public globalTimeElapsed: number = 0;
-    
+
     public gameStatusText: string = "";
 
     // ZMIANA: Callback przyjmuje teraz info o wygranej
@@ -66,13 +66,14 @@ export class GameManager {
         // Reset liczników z configu poziomu
         this.movesLeft = level.moveLimit;
         this.timeLeft = level.timeLimit;
-        
+
         // Reset postępu celów
         this.goalProgress = level.goals.map(() => 0);
 
         // Przekazujemy układ do logiki!
+        // Przekazujemy układ ORAZ listę dozwolonych bloków
         console.log(`Loading Level: ${level.id}`);
-        this.logic.initBoard(level.layout);
+        this.logic.initBoard(level.layout, level.availableBlockIds);
 
         this.updateStatusText();
         console.log("=== LEVEL STARTED ===");
@@ -114,15 +115,15 @@ export class GameManager {
             this.isProcessingTurn = true;
         } else if (this.isProcessingTurn) {
             this.isProcessingTurn = false;
-            this.endTurn(); 
+            this.endTurn();
         }
 
         // Timer tury (opcjonalny, np. dla PvP)
         if (AppConfig.gameMode !== 'SOLO' && !this.isProcessingTurn) {
-             this.turnTimer -= dt;
-             if (this.turnTimer <= 0) {
-                 this.endTurn();
-             }
+            this.turnTimer -= dt;
+            if (this.turnTimer <= 0) {
+                this.endTurn();
+            }
         }
 
         if (currentPlayer) {
@@ -136,9 +137,9 @@ export class GameManager {
         if (this.isGameOver) return false;
         // W trybie SOLO zawsze jest tura gracza (chyba że animacje trwają)
         if (AppConfig.gameMode === 'SOLO') {
-             // Blokujemy input tylko jak coś się dzieje na planszy
-             const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
-             return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
+            // Blokujemy input tylko jak coś się dzieje na planszy
+            const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
+            return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
         }
         const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
         return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
@@ -205,7 +206,7 @@ export class GameManager {
     private updateStatusText() {
         if (!this.currentLevel) return;
         let status = "";
-        
+
         // Cele
         this.currentLevel.goals.forEach((goal, i) => {
             const current = this.goalProgress[i];

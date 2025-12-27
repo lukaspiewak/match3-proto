@@ -1,34 +1,38 @@
-// Stałe dla czytelności
-export const R_ = -1;  // Random (Losowy)
-export const S_ = 200; // Stone (Kamień)
-export const I_ = 300; // Ice (Lód)
+import { COLS, ROWS } from './Config';
 
-// Typy Celów
+export const R_ = -1;  // Random
+export const S_ = 200; // Stone
+export const I_ = 300; // Ice
+
 export type GoalType = 'SCORE' | 'COLLECT';
 
 export interface LevelGoal {
     type: GoalType;
-    targetId?: number; // Np. ID bloku do zebrania (dla COLLECT)
-    amount: number;    // Ile punktów lub ile sztuk
+    targetId?: number;
+    amount: number;
 }
 
 export interface LevelConfig {
     id: string;
-    name: string;            // NOWOŚĆ: Nazwa wyświetlana w menu
-    layout: number[][];      // Układ planszy (7x9)
-    moveLimit: number;       // Limit ruchów (0 = brak)
-    timeLimit: number;       // Limit czasu w sekundach (0 = brak)
-    goals: LevelGoal[];      // Lista celów
+    name: string;
+    layout: number[][];
+    moveLimit: number;
+    timeLimit: number;
+    goals: LevelGoal[];
+    // NOWOŚĆ: Lista ID bloków, które mogą się pojawiać w tym poziomie
+    availableBlockIds: number[]; 
 }
 
 // --- POZIOM 1: Kopalnia ---
+// Dostępne tylko 4 kolory (łatwiej o combo) + Kamienie i Lód
 export const LEVEL_1: LevelConfig = {
     id: "level_1",
     name: "Level 1: The Mine",
     moveLimit: 20,
     timeLimit: 0,
+    availableBlockIds: [0, 1, 2, 3], // Tylko 4 podstawowe kolory
     goals: [
-        { type: 'COLLECT', targetId: 200, amount: 5 } // Zbij 5 kamieni
+        { type: 'COLLECT', targetId: 200, amount: 5 }
     ],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],
@@ -44,11 +48,13 @@ export const LEVEL_1: LevelConfig = {
 };
 
 // --- POZIOM 2: Zamarznięte Serce ---
+// Dostępne 5 kolorów
 export const LEVEL_2: LevelConfig = {
     id: "level_2",
     name: "Level 2: Frozen Time",
     moveLimit: 0,
     timeLimit: 90,
+    availableBlockIds: [0, 1, 2, 4, 5], // Inny zestaw kolorów
     goals: [
         { type: 'SCORE', amount: 3000 }
     ],
@@ -65,5 +71,4 @@ export const LEVEL_2: LevelConfig = {
     ]
 };
 
-// Eksportujemy listę wszystkich poziomów dla Menu
 export const LEVELS = [LEVEL_1, LEVEL_2];

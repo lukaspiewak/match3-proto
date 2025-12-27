@@ -1,3 +1,4 @@
+// ... (importy bez zmian) ...
 import { EventEmitter } from 'pixi.js';
 import { 
     COLS, ROWS, CellState, type Cell, 
@@ -6,8 +7,6 @@ import {
 } from './Config';
 import { Random } from './Random';
 import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
-
-// Importy Podsystemów
 import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';
@@ -22,8 +21,7 @@ export interface MoveResult {
 
 export class BoardLogic extends EventEmitter {
     public cells: Cell[];
-    
-    // Podsystemy
+    // ... (reszta pól bez zmian) ...
     public statsManager: StatsManager;
     private physics: GridPhysics;
     private matchEngine: MatchEngine;
@@ -32,73 +30,60 @@ export class BoardLogic extends EventEmitter {
 
     public needsMatchCheck: boolean = false;
     public statsEnabled: boolean = false; 
-
     public onBadMove: (() => void) | null = null;
-    
     private currentThinkingTime: number = 0; 
 
     constructor() {
         super();
         this.cells = [];
-        
-        // Inicjalizacja Podsystemów
         this.statsManager = new StatsManager();
         this.actionManager = new ActionManager();
         this.physics = new GridPhysics(this.cells);
         this.matchEngine = new MatchEngine(this);
         this.hintSystem = new HintSystem(this, this.matchEngine);
-        
-        // Konfiguracja Fizyki - callbacki
         this.physics.onNeedsMatchCheck = () => { this.needsMatchCheck = true; };
-        
         this.physics.onDropDown = (id) => {
             const def = BlockRegistry.getById(this.cells[id].typeId);
             if (def && def.triggers.onDropDown !== 'NONE') {
                 this.runAction(def.triggers.onDropDown, id, new Set([id]));
-                if (this.cells[id].state !== CellState.IDLE) {
-                    this.needsMatchCheck = false;
-                }
+                if (this.cells[id].state !== CellState.IDLE) this.needsMatchCheck = false;
             }
         };
-
         this.initBoard();
     }
 
-    // --- Proxy Properties (API dla innych modułów) ---
+    // ... (proxy properties bez zmian) ...
     public get currentCombo() { return this.matchEngine.currentCombo; }
     public set currentCombo(v) { this.matchEngine.currentCombo = v; }
     public get comboTimer() { return this.matchEngine.comboTimer; }
     public set comboTimer(v) { this.matchEngine.comboTimer = v; }
     public get bestCombo() { return this.matchEngine.bestCombo; }
+    public get statsEnabled() { return this.statsManager.enabled; }
+    public set statsEnabled(v: boolean) { this.statsManager.enabled = v; }
     public getLastMoveGroupSize() { return this.matchEngine.lastMoveGroupSize; }
-    
     public setGravity(direction: GravityDir) { this.physics.setGravity(direction); }
     public findHint() { return this.hintSystem.findHint(); }
     public findDeadlockFix() { return this.hintSystem.findDeadlockFix(); }
 
-    // --- Główna Pętla ---
-
     public update(delta: number) {
+        // ... (bez zmian) ...
         const dt = delta / 60.0;
-        
         this.matchEngine.update(dt);
-        this.hintSystem.update(dt); // Aktualizacja hintów
-
+        this.hintSystem.update(dt); 
         if (this.statsEnabled && !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE)) {
             this.currentThinkingTime += dt;
             this.statsManager.recordThinkingTime(dt);
         }
-
         this.updateTimers(delta);
         this.physics.update(delta);
-
         if (this.needsMatchCheck) {
             this.matchEngine.scanForMatches();
             this.needsMatchCheck = false;
         }
     }
 
-    public initBoard(levelLayout?: number[][]) {
+    // --- ZMODYFIKOWANA METODA INIT ---
+    public initBoard(levelLayout?: number[][], availableBlockIds?: number[]) {
         this.setGravity(AppConfig.gravityDir);
         this.cells.length = 0;
         this.matchEngine.reset();
@@ -106,53 +91,56 @@ export class BoardLogic extends EventEmitter {
         this.hintSystem.reset();
         this.currentThinkingTime = 0;
 
+        // 1. Konfiguracja fizyki (jakie bloki mają spadać)
+        if (availableBlockIds && availableBlockIds.length > 0) {
+            this.physics.allowedBlockIds = availableBlockIds;
+        } else {
+            // Fallback: wszystkie kolory
+            this.physics.allowedBlockIds = [];
+            for(let i=0; i<AppConfig.blockTypes; i++) this.physics.allowedBlockIds.push(i);
+        }
+
         for (let i = 0; i < COLS * ROWS; i++) {
             const col = i % COLS;
             const row = Math.floor(i / COLS);
             let chosenType = -1;
 
-            // 1. Sprawdzamy czy mamy definicję poziomu dla tego pola
+            // 2. Czy layout wymusza klocek?
             if (levelLayout && levelLayout[row] && levelLayout[row][col] !== undefined) {
                 const layoutValue = levelLayout[row][col];
                 if (layoutValue !== -1) {
-                    // Mamy konkretny klocek z definicji (np. kamień, lód)
                     chosenType = layoutValue;
                 }
             }
 
-            // 2. Jeśli nie wybrano typu (bo brak layoutu lub w layoucie był -1), losujemy
+            // 3. Jeśli nie, losujemy (z puli dozwolonych!)
             if (chosenType === -1) {
                 let forbiddenH = -1; let forbiddenV = -1;
                 if (col >= 2) { if (this.cells[i-1].typeId === this.cells[i-2].typeId) forbiddenH = this.cells[i-1].typeId; }
                 if (row >= 2) { if (this.cells[i-COLS].typeId === this.cells[i-(COLS*2)].typeId) forbiddenV = this.cells[i-COLS].typeId; }
                 
                 do { 
-                    chosenType = BlockRegistry.getRandomBlockId(AppConfig.blockTypes); 
+                    chosenType = BlockRegistry.getRandomBlockIdFromList(this.physics.allowedBlockIds);
                 } while (chosenType === forbiddenH || chosenType === forbiddenV);
             }
 
-            // 3. Tworzymy komórkę
             const blockDef = BlockRegistry.getById(chosenType);
-
-            // Fallback gdyby ID z levelu nie istniało
             const finalHp = blockDef ? blockDef.initialHp : 1;
 
             this.cells.push({
-                id: i, 
-                typeId: chosenType, 
-                state: CellState.IDLE,
+                id: i, typeId: chosenType, state: CellState.IDLE,
                 x: col, y: row, targetX: col, targetY: row,
                 velocity: 0, timer: 0,
-                hp: finalHp,      // Inicjalizacja HP
-                maxHp: finalHp
+                hp: finalHp, maxHp: finalHp
             });
         }
     }
 
     public trySwap(idxA: number, dirX: number, dirY: number): MoveResult {
+        // ... (bez zmian) ...
         const result: MoveResult = { success: false, causedMatch: false, maxGroupSize: 0 };
         this.matchEngine.lastMoveGroupSize = 0; 
-        this.hintSystem.reset(); // Reset podpowiedzi przy ruchu
+        this.hintSystem.reset(); 
 
         const col = idxA % COLS; const row = Math.floor(idxA / COLS);
         const targetCol = col + dirX; const targetRow = row + dirY;
@@ -179,12 +167,10 @@ export class BoardLogic extends EventEmitter {
         if (AppConfig.comboMode === 'MOVE') this.matchEngine.currentCombo = 0;
         this.matchEngine.lastSwapTargetId = idxB;
 
-        // Zamiana logiczna i fizyczna
         const tempType = cellA.typeId; cellA.typeId = cellB.typeId; cellB.typeId = tempType;
         const tempX = cellA.x; const tempY = cellA.y;
         cellA.x = cellB.x; cellA.y = cellB.y; cellB.x = tempX; cellB.y = tempY;
 
-        // Przenosimy też HP przy zamianie!
         const tempHp = cellA.hp; cellA.hp = cellB.hp; cellB.hp = tempHp;
         const tempMaxHp = cellA.maxHp; cellA.maxHp = cellB.maxHp; cellB.maxHp = tempMaxHp;
 
@@ -199,7 +185,6 @@ export class BoardLogic extends EventEmitter {
             result.causedMatch = true;
         } else {
             this.statsManager.recordMove(false);
-            // Cofanie
             cellB.typeId = cellA.typeId; cellA.typeId = tempType;
             cellB.hp = cellA.hp; cellA.hp = tempHp;
             cellB.maxHp = cellA.maxHp; cellA.maxHp = tempMaxHp;
