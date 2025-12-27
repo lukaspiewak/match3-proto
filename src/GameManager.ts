@@ -5,6 +5,7 @@ import {
 } from './Config';
 import { type LevelConfig } from './LevelDef';
 import { Resources } from './core/ResourceManager';
+import { Buildings } from './core/BuildingManager'; // NOWOŚĆ: Import potrzebny do sprawdzania limitów
 
 export class GameManager {
     private logic: BoardLogic;
@@ -27,7 +28,7 @@ export class GameManager {
     public maxTime: number = 0;
 
     public turnTimer: number = 0;
-    // NOWOŚĆ: Getter do limitu czasu tury (dla UI)
+    // Getter do limitu czasu tury (dla UI)
     public get maxTurnTime(): number { return TURN_TIME_LIMIT; }
 
     private isProcessingTurn: boolean = false; 
@@ -155,18 +156,38 @@ export class GameManager {
         if (!this.currentLevel || this.isGameOver) return;
         this.currentScore += 10;
 
+        // 1. Tryb CONSTRUCTION - zużywanie surowców
         if (this.currentLevel.mode === 'CONSTRUCTION') {
             if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]--; 
+            
             if (this.sessionInventory[typeId] < 0) {
                 this.finishGame(`BANKRUPTCY!`, false);
                 return;
             }
-        } else {
+        } 
+        // 2. Tryb GATHERING - zbieranie z limitem magazynowym (NAPRAWIONE)
+        else if (this.currentLevel.mode === 'GATHERING') {
+            const currentGlobal = Resources.getAmount(typeId);
+            const currentSession = this.sessionInventory[typeId] || 0;
+            const maxCapacity = Buildings.getResourceCapacity(typeId);
+
+            // Sprawdzamy czy mamy miejsce w magazynie
+            if (currentGlobal + currentSession < maxCapacity) {
+                if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
+                this.sessionInventory[typeId]++;
+            } else {
+                console.log(`Inventory FULL for block ${typeId}. Max: ${maxCapacity}`);
+                // Tutaj nie zwiększamy licznika - surowiec przepada
+            }
+        }
+        // 3. Tryb STANDARD - zbieranie bez limitów (dla celów poziomu)
+        else {
             if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]++;
         }
 
+        // Aktualizacja postępu celów (Goals)
         this.currentLevel.goals.forEach((goal, index) => {
             if (goal.type === 'COLLECT' && goal.targetId === typeId) {
                 this.goalProgress[index]++;
