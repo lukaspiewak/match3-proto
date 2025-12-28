@@ -9,24 +9,24 @@ export class UpgradeWindow extends PIXI.Container {
     private bg: PIXI.Graphics;
     private contentContainer: PIXI.Container;
     private closeCallback: () => void;
-    private onUpgradeSuccess: () => void;
+    // ZMIANA: Callback nie jest już onUpgradeSuccess, tylko onStartConstruction
+    private startConstructionCallback: (def: BuildingDefinition) => void;
     private def: BuildingDefinition;
 
-    constructor(def: BuildingDefinition, onClose: () => void, onUpgrade: () => void) {
+    constructor(def: BuildingDefinition, onClose: () => void, onStart: (def: BuildingDefinition) => void) {
         super();
         this.def = def;
         this.closeCallback = onClose;
-        this.onUpgradeSuccess = onUpgrade;
+        this.startConstructionCallback = onStart;
 
-        // Blokada interakcji pod spodem (overlay)
+        // Blokada interakcji pod spodem
         const overlay = new PIXI.Graphics();
-        overlay.rect(0, 0, 2000, 2000); // Duży obszar
+        overlay.rect(0, 0, 2000, 2000); 
         overlay.fill({ color: 0x000000, alpha: 0.7 });
         overlay.eventMode = 'static';
         overlay.on('pointerdown', (e) => e.stopPropagation());
         this.addChild(overlay);
 
-        // Główne okno
         this.bg = new PIXI.Graphics();
         this.addChild(this.bg);
 
@@ -37,10 +37,9 @@ export class UpgradeWindow extends PIXI.Container {
     }
 
     private drawWindow() {
-        const WIDTH = 360; // Nieco szersze dla wygody
+        const WIDTH = 360; 
         const HEIGHT = 420;
         
-        // 1. Tło Okna
         this.bg.clear();
         this.bg.rect(-WIDTH / 2, -HEIGHT / 2, WIDTH, HEIGHT);
         this.bg.fill({ color: 0x2D3748 });
@@ -49,23 +48,18 @@ export class UpgradeWindow extends PIXI.Container {
         // --- NAGŁÓWEK ---
         const headerY = -HEIGHT / 2 + 50;
         
-        // Ikona budynku (na podstawie surowca magazynowanego)
         if (this.def.storageResourceId !== undefined) {
             const blockDef = BlockRegistry.getById(this.def.storageResourceId);
             if (blockDef && PIXI.Assets.cache.has(blockDef.assetAlias)) {
                 const icon = new PIXI.Sprite(PIXI.Assets.get(blockDef.assetAlias));
                 icon.anchor.set(0.5);
-                
-                // Skalujemy do 48px
                 const maxDim = Math.max(icon.width, icon.height);
                 icon.scale.set(48 / maxDim);
-                
                 icon.x = -WIDTH / 2 + 60;
                 icon.y = headerY;
-                icon.tint = blockDef.color; // Kolor surowca
+                icon.tint = blockDef.color;
                 this.contentContainer.addChild(icon);
                 
-                // Tło pod ikoną dla kontrastu
                 const iconBg = new PIXI.Graphics();
                 iconBg.circle(icon.x, icon.y, 32);
                 iconBg.fill({ color: 0x000000, alpha: 0.3 });
@@ -73,24 +67,15 @@ export class UpgradeWindow extends PIXI.Container {
             }
         }
 
-        // Tytuł (Nazwa Budynku)
         const title = new PIXI.Text({
             text: this.def.name.toUpperCase(),
-            style: { 
-                fontFamily: 'Arial', 
-                fontSize: 22, 
-                fontWeight: 'bold', 
-                fill: 0xFFFFFF,
-                dropShadow: true,
-                dropShadowDistance: 2
-            }
+            style: { fontFamily: 'Arial', fontSize: 22, fontWeight: 'bold', fill: 0xFFFFFF, dropShadow: true, dropShadowDistance: 2 }
         });
-        title.anchor.set(0, 0.5); // Do lewej
-        title.x = -WIDTH / 2 + 110; // Obok ikony
+        title.anchor.set(0, 0.5); 
+        title.x = -WIDTH / 2 + 110; 
         title.y = headerY - 10;
         this.contentContainer.addChild(title);
 
-        // Poziomy
         const currentLevel = Buildings.getLevel(this.def.id);
         const nextLevel = currentLevel + 1;
         
@@ -103,7 +88,6 @@ export class UpgradeWindow extends PIXI.Container {
         lvlText.y = headerY + 15;
         this.contentContainer.addChild(lvlText);
 
-        // Separator
         const sep = new PIXI.Graphics();
         sep.moveTo(-WIDTH/2 + 20, headerY + 40);
         sep.lineTo(WIDTH/2 - 20, headerY + 40);
@@ -144,53 +128,36 @@ export class UpgradeWindow extends PIXI.Container {
             costRow.y = costY;
             this.contentContainer.addChild(costRow);
 
-            // Tło wiersza kosztu
             const rowBg = new PIXI.Graphics();
             rowBg.roundRect(-WIDTH/2 + 40, -15, WIDTH - 80, 30, 4);
             rowBg.fill({ color: 0x000000, alpha: 0.2 });
             costRow.addChild(rowBg);
 
-            // Ikona kosztu
             const iconAlias = blockDef ? blockDef.assetAlias : null;
             if (iconAlias && PIXI.Assets.cache.has(iconAlias)) {
                 const s = new PIXI.Sprite(PIXI.Assets.get(iconAlias));
                 s.anchor.set(0.5);
-                
-                // POPRAWKA: Skalujemy do konkretnego rozmiaru (np. 24px)
                 const maxDim = Math.max(s.width, s.height);
                 s.scale.set(24 / maxDim); 
-                
                 s.x = -WIDTH / 2 + 70;
-                s.tint = blockDef.color; // Kolorujemy na kolor surowca
+                s.tint = blockDef.color; 
                 costRow.addChild(s);
             }
 
-            // Tekst
             const amountTxt = new PIXI.Text({
                 text: `${playerAmount} / ${cost.amount}`,
                 style: { fontFamily: 'Arial', fontSize: 16, fill: color, fontWeight: 'bold' }
             });
-            amountTxt.anchor.set(1, 0.5); // Do prawej
+            amountTxt.anchor.set(1, 0.5); 
             amountTxt.x = WIDTH / 2 - 60;
             costRow.addChild(amountTxt);
-
-            // Nazwa surowca (opcjonalnie)
-            const nameTxt = new PIXI.Text({
-                text: blockDef ? blockDef.name : 'Unknown',
-                style: { fontFamily: 'Arial', fontSize: 14, fill: 0xCCCCCC }
-            });
-            nameTxt.anchor.set(0, 0.5);
-            nameTxt.x = -WIDTH / 2 + 100;
-            costRow.addChild(nameTxt);
 
             costY += 40;
         });
 
-
         // --- PRZYCISKI ---
         const btnY = HEIGHT / 2 - 40;
 
-        // Anuluj
         const btnClose = new Button("CANCEL", 120, 44, 0x555555, () => {
             this.closeCallback();
         });
@@ -198,19 +165,19 @@ export class UpgradeWindow extends PIXI.Container {
         btnClose.y = btnY;
         this.contentContainer.addChild(btnClose);
 
-        // Ulepsz
-        const btnUpgrade = new Button("UPGRADE", 120, 44, canAfford ? 0x00AA00 : 0x333333, () => {
+        // ZMIANA: Przycisk START zamiast UPGRADE
+        // Jeśli nie stać, nie pozwalamy wejść do poziomu budowy (bo od razu przegramy)
+        const btnStart = new Button("BUILD", 120, 44, canAfford ? 0x00AA00 : 0x333333, () => {
             if (canAfford) {
-                Resources.spend(costs);
-                Buildings.upgradeBuilding(this.def.id);
-                this.onUpgradeSuccess();
+                // Nie wydajemy tutaj! Przekazujemy sterowanie do sceny.
+                this.startConstructionCallback(this.def);
                 this.closeCallback();
             }
         });
-        if (!canAfford) btnUpgrade.alpha = 0.5;
+        if (!canAfford) btnStart.alpha = 0.5;
         
-        btnUpgrade.x = 75;
-        btnUpgrade.y = btnY;
-        this.contentContainer.addChild(btnUpgrade);
+        btnStart.x = 75;
+        btnStart.y = btnY;
+        this.contentContainer.addChild(btnStart);
     }
 }

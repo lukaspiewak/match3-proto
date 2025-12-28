@@ -5,7 +5,7 @@ import {
 } from './Config';
 import { type LevelConfig } from './LevelDef';
 import { Resources } from './core/ResourceManager';
-// USUNIĘTO import Buildings - GameManager nie musi już o nim wiedzieć!
+import { Buildings } from './core/BuildingManager'; // Przywrócono import do upgrade'u
 
 export class GameManager {
     private logic: BoardLogic;
@@ -19,11 +19,9 @@ export class GameManager {
     private sessionInventory: { [id: number]: number } = {};
     private startInventory: { [id: number]: number } = {};
 
-    // Liczniki bieżące
     public movesLeft: number = 0;
     public timeLeft: number = 0;
     
-    // Liczniki początkowe (do obliczania paska postępu w UI)
     public maxMoves: number = 0;
     public maxTime: number = 0;
 
@@ -68,7 +66,6 @@ export class GameManager {
         this.isGameOver = false;
         this.currentScore = 0;
 
-        // Initialize Limits
         this.movesLeft = level.moveLimit;
         this.maxMoves = level.moveLimit; 
 
@@ -77,7 +74,6 @@ export class GameManager {
 
         this.goalProgress = level.goals.map(() => 0);
         
-        // Initialize Inventory
         if (level.mode === 'CONSTRUCTION') {
             this.sessionInventory = Resources.getAll();
             this.startInventory = { ...this.sessionInventory };
@@ -157,36 +153,32 @@ export class GameManager {
         if (!this.currentLevel || this.isGameOver) return;
         this.currentScore += 10;
 
-        // 1. CONSTRUCTION: Consume resources
         if (this.currentLevel.mode === 'CONSTRUCTION') {
             if (this.sessionInventory[typeId] === undefined) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]--; 
             
+            // W trybie konstrukcji (gdzie cele są ustawione na koszt), 
+            // nie możemy pozwolić na spadek poniżej zera (brak surowców = bankructwo)
             if (this.sessionInventory[typeId] < 0) {
                 this.finishGame(`BANKRUPTCY! (Ran out of Block ${typeId})`, false);
                 return;
             }
         } 
-        // 2. GATHERING: Collect with limit (ZMIANA: użycie Resources.hasSpace)
         else if (this.currentLevel.mode === 'GATHERING') {
-            // Sprawdzamy w Resources czy mamy miejsce, przekazując ile już zebraliśmy w tej sesji
-            const sessionAmount = this.sessionInventory[typeId] || 0;
-            
-            if (Resources.hasSpace(typeId, sessionAmount)) {
+            const currentGlobal = Resources.getAmount(typeId);
+            const currentSession = this.sessionInventory[typeId] || 0;
+            const maxCapacity = Buildings.getResourceCapacity(typeId);
+
+            if (currentGlobal + currentSession < maxCapacity) {
                 if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
                 this.sessionInventory[typeId]++;
-            } else {
-                console.log(`Inventory FULL for block ${typeId}`);
-                // Surowiec przepada
             }
         }
-        // 3. STANDARD: Collect freely
         else {
             if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]++;
         }
 
-        // Update Goals
         this.currentLevel.goals.forEach((goal, index) => {
             if (goal.type === 'COLLECT' && goal.targetId === typeId) {
                 this.goalProgress[index]++;
@@ -222,7 +214,13 @@ export class GameManager {
         
         if (win && this.currentLevel) {
             if (this.currentLevel.mode === 'CONSTRUCTION') {
+                // 1. Zapisujemy zużyte surowce (stan po wydatkach)
                 Resources.setInventory(this.sessionInventory);
+                
+                // 2. NOWOŚĆ: Ulepszamy budynek jeśli wygraliśmy!
+                if (this.currentLevel.targetBuildingId) {
+                    Buildings.upgradeBuilding(this.currentLevel.targetBuildingId);
+                }
             } else {
                 for (const [id, amount] of Object.entries(this.sessionInventory)) {
                     Resources.addResource(parseInt(id), amount);
