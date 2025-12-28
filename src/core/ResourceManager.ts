@@ -1,4 +1,5 @@
 import { Buildings } from './BuildingManager';
+import { type BuildingCost } from '../BuildingDef'; // Importujemy definicję kosztu
 
 export class ResourceManager {
     private inventory: { [blockId: number]: number } = {};
@@ -6,20 +7,18 @@ export class ResourceManager {
 
     constructor() {
         this.load();
-        // DEBUG: Dajemy trochę zasobów na start
-        if (!this.inventory[200]) this.inventory[200] = 50; // 50 Kamieni na start
-        if (!this.inventory[0]) this.inventory[0] = 100; // 100 Serc
+        // DEBUG: Startowe zasoby
+        if (!this.inventory[200]) this.inventory[200] = 50; 
+        if (!this.inventory[0]) this.inventory[0] = 100; 
     }
 
+    // ... (metody addResource, setInventory, getAmount, getAll, hasSpace bez zmian) ...
     public addResource(blockId: number, amount: number) {
-        if (!this.inventory[blockId]) {
-            this.inventory[blockId] = 0;
-        }
+        if (!this.inventory[blockId]) this.inventory[blockId] = 0;
         this.inventory[blockId] += amount;
         this.save();
     }
 
-    // Nadpisanie całego inwentarza (używane po trybie Construction)
     public setInventory(newInventory: { [id: number]: number }) {
         this.inventory = { ...newInventory };
         this.save();
@@ -33,13 +32,33 @@ export class ResourceManager {
         return { ...this.inventory };
     }
 
-    // --- NOWOŚĆ: Sprawdzanie pojemności magazynu ---
-    // Zwraca true, jeśli możemy dodać surowiec (uwzględniając to co już mamy w sesji)
     public hasSpace(resourceId: number, currentSessionAmount: number = 0): boolean {
         const currentGlobal = this.getAmount(resourceId);
         const maxCapacity = Buildings.getResourceCapacity(resourceId);
-        
         return (currentGlobal + currentSessionAmount) < maxCapacity;
+    }
+
+    // --- NOWOŚĆ: Logika wydawania surowców ---
+
+    // Sprawdza, czy gracza stać na podany koszt
+    public hasEnough(cost: BuildingCost[]): boolean {
+        for (const item of cost) {
+            if (this.getAmount(item.resourceId) < item.amount) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Pobiera surowce z konta. Zwraca true jeśli się udało.
+    public spend(cost: BuildingCost[]): boolean {
+        if (!this.hasEnough(cost)) return false;
+
+        for (const item of cost) {
+            this.inventory[item.resourceId] -= item.amount;
+        }
+        this.save();
+        return true;
     }
 
     public clearSave() {
@@ -51,7 +70,6 @@ export class ResourceManager {
         try {
             const json = JSON.stringify(this.inventory);
             localStorage.setItem(this.STORAGE_KEY, json);
-            console.log("💾 Game Saved!");
         } catch (e) {
             console.warn("Save failed:", e);
         }
