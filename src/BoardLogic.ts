@@ -6,7 +6,7 @@ import {
     AppConfig, VisualConfig
 } from './Config';
 import { Random } from './Random';
-import { BlockRegistry, type SpecialAction, SPECIAL_BLOCK_ID } from './BlockDef';
+import { BlockRegistry, type SpecialAction } from './BlockDef';
 import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';

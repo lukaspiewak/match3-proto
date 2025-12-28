@@ -2,7 +2,7 @@ import { type IBlockAction } from './IBlockAction';
 import type { BoardLogic } from '../BoardLogic';
 import type { ActionManager } from './ActionManager';
 import { COLS, ROWS, CellState } from '../Config';
-import { BlockRegistry, SPECIAL_BLOCK_ID } from '../BlockDef';
+import { BlockRegistry } from '../BlockDef';
 
 export class ExplosionAction implements IBlockAction {
     constructor(private radius: number) {}
@@ -34,8 +34,8 @@ export class ExplosionAction implements IBlockAction {
                         // --- REAKCJA ŁAŃCUCHOWA (Chain Reaction) ---
                         if (targetDef) {
                             // Jeśli ofiara to blok specjalny LUB ma onMatch3 (Death Rattle)
-                            if (cell.typeId === SPECIAL_BLOCK_ID || targetDef.triggers.onMatch3 !== 'NONE') {
-                                const reactionAction = (cell.typeId === SPECIAL_BLOCK_ID) 
+                            if (cell.typeId === 100 || targetDef.triggers.onMatch3 !== 'NONE') {
+                                const reactionAction = (cell.typeId === 100) 
                                     ? 'EXPLODE_BIG' 
                                     : targetDef.triggers.onMatch3;
                                     

@@ -94,7 +94,7 @@ export const LEVEL_2: LevelConfig = {
     mode: 'STANDARD',
     moveLimit: 0,
     timeLimit: 90,
-    availableBlockIds: [0, 1, 2, 4, 5],
+    availableBlockIds: [0, 1, 2, 3],
     goals: [
         { type: 'SCORE', amount: 3000 }
     ],
@@ -141,7 +141,7 @@ export const LEVEL_4: LevelConfig = {
     mode: 'GATHERING',
     moveLimit: -1,
     timeLimit: 0,
-    availableBlockIds: [0, 1, 2, 3, 4, 5],
+    availableBlockIds: [0, 1, 2, 3, 4],
     goals: [],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],

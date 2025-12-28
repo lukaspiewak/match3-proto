@@ -1,4 +1,4 @@
-import type { SpecialAction, SPECIAL_BLOCK_ID } from '../BlockDef';
+import type { SpecialAction } from '../BlockDef';
 import type { IBlockAction } from './IBlockAction';
 import type { BoardLogic } from '../BoardLogic';
 
@@ -17,20 +17,21 @@ export class ActionManager {
 
     private registerStrategies() {
         this.strategies.set('EXPLODE_SMALL', new ExplosionAction(1));
-        this.strategies.set('EXPLODE_BIG',   new ExplosionAction(2));
-        
-        this.strategies.set('LINE_CLEAR_H',  new LineClearAction('HORIZONTAL'));
-        this.strategies.set('LINE_CLEAR_V',  new LineClearAction('VERTICAL'));
-        
-        this.strategies.set('MAGIC_BONUS',   new MagicBonusAction());
-        
+        this.strategies.set('EXPLODE_BIG', new ExplosionAction(2));
+
+        this.strategies.set('LINE_CLEAR_H', new LineClearAction('HORIZONTAL'));
+        this.strategies.set('LINE_CLEAR_V', new LineClearAction('VERTICAL'));
+
+        this.strategies.set('MAGIC_BONUS', new MagicBonusAction());
+
         // --- NOWOŚĆ: Rejestracja akcji tworzenia bloków ---
         // Ujednolicamy CREATE_SPECIAL z innymi
-        this.strategies.set('CREATE_SPECIAL', new CreateBlockAction(100)); // Gwiazda
-        this.strategies.set('CREATE_STONE',   new CreateBlockAction(200)); // Kamień
-        this.strategies.set('CREATE_ICE',     new CreateBlockAction(300)); // Lód
-        
-        this.strategies.set('NONE', { execute: () => {} });
+        this.strategies.set('CREATE_SPECIAL', new CreateBlockAction([100])); // Gwiazda
+        this.strategies.set('CREATE_STONE', new CreateBlockAction([200])); // Kamień
+        this.strategies.set('CREATE_ORE', new CreateBlockAction([30, 31])); // Ruda
+        this.strategies.set('CREATE_ICE', new CreateBlockAction([300])); // Lód
+
+        this.strategies.set('NONE', { execute: () => { } });
     }
 
     public execute(actionType: SpecialAction, originIdx: number, board: BoardLogic, targetSet: Set<number>) {

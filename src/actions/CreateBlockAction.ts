@@ -5,11 +5,13 @@ import { BlockRegistry } from '../BlockDef';
 import { CellState } from '../Config';
 
 export class CreateBlockAction implements IBlockAction {
-    constructor(private targetBlockId: number) {}
+    constructor(private targetBlockId: number[]) { }
 
     execute(originIdx: number, board: BoardLogic, targetSet: Set<number>, _manager: ActionManager): void {
         const cell = board.cells[originIdx];
-        const def = BlockRegistry.getById(this.targetBlockId);
+        const randomIndex = Math.floor(Math.random() * this.targetBlockId.length);
+    
+        const def = BlockRegistry.getById(this.targetBlockId[randomIndex]);
 
         if (!def) {
             console.warn(`CreateBlockAction: Unknown block ID ${this.targetBlockId}`);
@@ -17,7 +19,7 @@ export class CreateBlockAction implements IBlockAction {
         }
 
         // Transformacja klocka
-        cell.typeId = this.targetBlockId;
+        cell.typeId = this.targetBlockId[randomIndex];
         cell.state = CellState.IDLE;
         cell.hp = def.initialHp;
         cell.maxHp = def.initialHp;

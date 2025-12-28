@@ -1,5 +1,5 @@
 import { CellState, COLS, ROWS, AppConfig, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
-import { BlockRegistry, SPECIAL_BLOCK_ID, type SpecialAction } from '../BlockDef';
+import { BlockRegistry, type SpecialAction } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 
 export class MatchEngine {
