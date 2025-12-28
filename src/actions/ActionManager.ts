@@ -27,7 +27,7 @@ export class ActionManager {
         // --- NOWOŚĆ: Rejestracja akcji tworzenia bloków ---
         // Ujednolicamy CREATE_SPECIAL z innymi
         this.strategies.set('CREATE_SPECIAL', new CreateBlockAction([100])); // Gwiazda
-        this.strategies.set('CREATE_STONE', new CreateBlockAction([200])); // Kamień
+        this.strategies.set('CREATE_WALL', new CreateBlockAction([200])); // Kamień
         this.strategies.set('CREATE_ORE', new CreateBlockAction([30, 31])); // Ruda
         this.strategies.set('CREATE_ICE', new CreateBlockAction([300])); // Lód
 

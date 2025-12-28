@@ -178,7 +178,7 @@ export class MatchEngine {
             if (action !== 'NONE') {
                 // --- ZMIANA: Obsługa akcji tworzenia (CREATE_*) ---
                 if (action.startsWith('CREATE_')) {
-                    // Akcje tworzenia (CREATE_SPECIAL, CREATE_STONE itp.) uruchamiamy TYLKO RAZ dla grupy.
+                    // Akcje tworzenia (CREATE_SPECIAL, CREATE_WALL itp.) uruchamiamy TYLKO RAZ dla grupy.
                     // Wybieramy najlepsze miejsce (tam gdzie gracz ruszył).
                     
                     let targetIdx = group[0];

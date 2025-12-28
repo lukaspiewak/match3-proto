@@ -8,7 +8,7 @@ export type SpecialAction =
     | 'LINE_CLEAR_V'
     | 'MAGIC_BONUS'
     | 'CREATE_SPECIAL'
-    | 'CREATE_STONE'
+    | 'CREATE_WALL'
     | 'CREATE_ORE'
     | 'CREATE_ICE';
 
@@ -61,7 +61,7 @@ export class BlockRegistry {
             new BlockDefinition(3, "Stone", 0xc6ccd5, 0x2D3748, '🪨', 'block_4', 20, "Tworzy Rudy", { onMatch5: 'CREATE_ORE' }),
 
 
-            new BlockDefinition(4, "Golden Coin", 0xF6E05E, 0x975A16, '🪙', 'block_3', 1, "Tworzy kamienie", { onMatch5: 'CREATE_STONE' }),
+            new BlockDefinition(4, "Golden Coin", 0xF6E05E, 0x975A16, '🪙', 'block_3', 1, "Tworzy kamienie", { onMatch5: 'CREATE_WALL' }),
 
         ];
         //special blocks

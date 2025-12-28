@@ -25,7 +25,7 @@ export const BUILDINGS: BuildingDefinition[] = [
         capacityPerLevel: 50,
         getUpgradeCost: (level) => [
             { resourceId: 3, amount: level * 50 }, 
-            { resourceId: 200, amount: level * 10 } 
+            { resourceId: 1, amount: level * 10 } 
         ]
     },
     {
