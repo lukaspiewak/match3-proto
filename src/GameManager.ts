@@ -5,7 +5,7 @@ import {
 } from './Config';
 import { type LevelConfig } from './LevelDef';
 import { Resources } from './core/ResourceManager';
-import { Buildings } from './core/BuildingManager'; // NOWOŚĆ: Import potrzebny do sprawdzania limitów
+// USUNIĘTO import Buildings - GameManager nie musi już o nim wiedzieć!
 
 export class GameManager {
     private logic: BoardLogic;
@@ -28,7 +28,6 @@ export class GameManager {
     public maxTime: number = 0;
 
     public turnTimer: number = 0;
-    // Getter do limitu czasu tury (dla UI)
     public get maxTurnTime(): number { return TURN_TIME_LIMIT; }
 
     private isProcessingTurn: boolean = false; 
@@ -69,7 +68,7 @@ export class GameManager {
         this.isGameOver = false;
         this.currentScore = 0;
 
-        // Ustawiamy limity bieżące i maksymalne
+        // Initialize Limits
         this.movesLeft = level.moveLimit;
         this.maxMoves = level.moveLimit; 
 
@@ -78,9 +77,11 @@ export class GameManager {
 
         this.goalProgress = level.goals.map(() => 0);
         
+        // Initialize Inventory
         if (level.mode === 'CONSTRUCTION') {
             this.sessionInventory = Resources.getAll();
             this.startInventory = { ...this.sessionInventory };
+            console.log("🏗️ Construction Start. Inventory:", this.sessionInventory);
         } else {
             this.sessionInventory = {};
             this.startInventory = {};
@@ -156,38 +157,36 @@ export class GameManager {
         if (!this.currentLevel || this.isGameOver) return;
         this.currentScore += 10;
 
-        // 1. Tryb CONSTRUCTION - zużywanie surowców
+        // 1. CONSTRUCTION: Consume resources
         if (this.currentLevel.mode === 'CONSTRUCTION') {
-            if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
+            if (this.sessionInventory[typeId] === undefined) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]--; 
             
             if (this.sessionInventory[typeId] < 0) {
-                this.finishGame(`BANKRUPTCY!`, false);
+                this.finishGame(`BANKRUPTCY! (Ran out of Block ${typeId})`, false);
                 return;
             }
         } 
-        // 2. Tryb GATHERING - zbieranie z limitem magazynowym (NAPRAWIONE)
+        // 2. GATHERING: Collect with limit (ZMIANA: użycie Resources.hasSpace)
         else if (this.currentLevel.mode === 'GATHERING') {
-            const currentGlobal = Resources.getAmount(typeId);
-            const currentSession = this.sessionInventory[typeId] || 0;
-            const maxCapacity = Buildings.getResourceCapacity(typeId);
-
-            // Sprawdzamy czy mamy miejsce w magazynie
-            if (currentGlobal + currentSession < maxCapacity) {
+            // Sprawdzamy w Resources czy mamy miejsce, przekazując ile już zebraliśmy w tej sesji
+            const sessionAmount = this.sessionInventory[typeId] || 0;
+            
+            if (Resources.hasSpace(typeId, sessionAmount)) {
                 if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
                 this.sessionInventory[typeId]++;
             } else {
-                console.log(`Inventory FULL for block ${typeId}. Max: ${maxCapacity}`);
-                // Tutaj nie zwiększamy licznika - surowiec przepada
+                console.log(`Inventory FULL for block ${typeId}`);
+                // Surowiec przepada
             }
         }
-        // 3. Tryb STANDARD - zbieranie bez limitów (dla celów poziomu)
+        // 3. STANDARD: Collect freely
         else {
             if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]++;
         }
 
-        // Aktualizacja postępu celów (Goals)
+        // Update Goals
         this.currentLevel.goals.forEach((goal, index) => {
             if (goal.type === 'COLLECT' && goal.targetId === typeId) {
                 this.goalProgress[index]++;
@@ -220,6 +219,7 @@ export class GameManager {
     private finishGame(reason: string, win: boolean) {
         this.isGameOver = true;
         this.gameStatusText = win ? "VICTORY!" : "DEFEAT";
+        
         if (win && this.currentLevel) {
             if (this.currentLevel.mode === 'CONSTRUCTION') {
                 Resources.setInventory(this.sessionInventory);
@@ -228,7 +228,11 @@ export class GameManager {
                     Resources.addResource(parseInt(id), amount);
                 }
             }
+            console.log("💾 Progress Saved.");
+        } else {
+            console.log("❌ No Progress Saved (Defeat/Bankruptcy).");
         }
+
         console.log(`🏁 GAME OVER: ${reason}`);
         if (this.onGameFinished) this.onGameFinished(reason, win);
     }
