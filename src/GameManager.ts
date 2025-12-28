@@ -3,9 +3,9 @@ import { PlayerController } from './PlayerController';
 import { 
     PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig 
 } from './Config';
-import { type LevelConfig } from './LevelDef';
+import { type LevelConfig, type LevelGoal } from './LevelDef'; // Dodano LevelGoal
 import { Resources } from './core/ResourceManager';
-import { Buildings } from './core/BuildingManager'; // Przywrócono import do upgrade'u
+import { Buildings } from './core/BuildingManager';
 
 export class GameManager {
     private logic: BoardLogic;
@@ -49,10 +49,14 @@ export class GameManager {
         this.onBlockDestroyed(data.typeId);
     };
 
-    // --- UI Helpers ---
+    // --- UI Helpers & Getters ---
     public getSessionResourceAmount(typeId: number): number { return this.sessionInventory[typeId] || 0; }
     public getStartResourceAmount(typeId: number): number { return this.startInventory[typeId] || 0; }
     public get currentLevelMode() { return this.currentLevel ? this.currentLevel.mode : 'STANDARD'; }
+    
+    // NOWOŚĆ: Gettery dla UI celów
+    public getCurrentGoals(): LevelGoal[] { return this.currentLevel ? this.currentLevel.goals : []; }
+    public getGoalProgress(index: number): number { return this.goalProgress[index] || 0; }
 
     // --- Core Logic ---
     public registerPlayer(player: PlayerController) { this.players.push(player); }
@@ -157,8 +161,6 @@ export class GameManager {
             if (this.sessionInventory[typeId] === undefined) this.sessionInventory[typeId] = 0;
             this.sessionInventory[typeId]--; 
             
-            // W trybie konstrukcji (gdzie cele są ustawione na koszt), 
-            // nie możemy pozwolić na spadek poniżej zera (brak surowców = bankructwo)
             if (this.sessionInventory[typeId] < 0) {
                 this.finishGame(`BANKRUPTCY! (Ran out of Block ${typeId})`, false);
                 return;
@@ -169,9 +171,11 @@ export class GameManager {
             const currentSession = this.sessionInventory[typeId] || 0;
             const maxCapacity = Buildings.getResourceCapacity(typeId);
 
-            if (currentGlobal + currentSession < maxCapacity) {
+            if (Resources.hasSpace(typeId, currentSession)) {
                 if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
                 this.sessionInventory[typeId]++;
+            } else {
+                console.log(`Inventory FULL for block ${typeId}`);
             }
         }
         else {
@@ -179,6 +183,7 @@ export class GameManager {
             this.sessionInventory[typeId]++;
         }
 
+        // Update Goals
         this.currentLevel.goals.forEach((goal, index) => {
             if (goal.type === 'COLLECT' && goal.targetId === typeId) {
                 this.goalProgress[index]++;
@@ -214,10 +219,8 @@ export class GameManager {
         
         if (win && this.currentLevel) {
             if (this.currentLevel.mode === 'CONSTRUCTION') {
-                // 1. Zapisujemy zużyte surowce (stan po wydatkach)
                 Resources.setInventory(this.sessionInventory);
-                
-                // 2. NOWOŚĆ: Ulepszamy budynek jeśli wygraliśmy!
+                // Upgrade po wygranej
                 if (this.currentLevel.targetBuildingId) {
                     Buildings.upgradeBuilding(this.currentLevel.targetBuildingId);
                 }

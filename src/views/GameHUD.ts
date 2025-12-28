@@ -5,11 +5,95 @@ import { CurrentTheme, AppConfig } from '../Config';
 import { BlockRegistry } from '../BlockDef';
 import { Resources } from '../core/ResourceManager';
 import { Buildings } from '../core/BuildingManager';
+import { type LevelGoal } from '../LevelDef';
 
 export interface BarMetric {
     percent: number;
     color: number;
 }
+
+// NOWOŚĆ: Klasa do wyświetlania pojedynczego celu
+class GoalItem extends PIXI.Container {
+    private label: PIXI.Text;
+    private icon: PIXI.Container;
+    private checkmark: PIXI.Text;
+
+    constructor(goal: LevelGoal) {
+        super();
+
+        // 1. Tło
+        const bg = new PIXI.Graphics();
+        bg.rect(0, 0, 100, 30);
+        bg.fill({ color: 0x000000, alpha: 0.3 });
+        bg.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.2 });
+        this.addChild(bg);
+        this['bg'] = bg; // ref for resize
+
+        // 2. Ikona
+        this.icon = new PIXI.Container();
+        this.icon.x = 20; this.icon.y = 15;
+        this.addChild(this.icon);
+
+        if (goal.type === 'COLLECT' && goal.targetId !== undefined) {
+            const def = BlockRegistry.getById(goal.targetId);
+            if (def && PIXI.Assets.cache.has(def.assetAlias)) {
+                const s = new PIXI.Sprite(PIXI.Assets.get(def.assetAlias));
+                s.anchor.set(0.5);
+                const max = Math.max(s.width, s.height);
+                s.scale.set(20 / max);
+                s.tint = def.color;
+                this.icon.addChild(s);
+            } else {
+                 const t = new PIXI.Text({ text: def ? def.symbol : '?', style: { fontSize: 14, fill: 0xFFFFFF } });
+                 t.anchor.set(0.5);
+                 this.icon.addChild(t);
+            }
+        } else {
+             // Score Goal
+             const t = new PIXI.Text({ text: '★', style: { fontSize: 14, fill: 0xFFD700 } });
+             t.anchor.set(0.5);
+             this.icon.addChild(t);
+        }
+
+        // 3. Tekst Postępu
+        this.label = new PIXI.Text({
+            text: `0 / ${goal.amount}`,
+            style: { fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', fill: 0xFFFFFF }
+        });
+        this.label.anchor.set(1, 0.5);
+        this.addChild(this.label);
+        
+        // 4. Checkmark (ukryty na start)
+        this.checkmark = new PIXI.Text({
+            text: '✔',
+            style: { fontFamily: 'Arial', fontSize: 18, fontWeight: 'bold', fill: 0x00FF00, stroke: { color: 0x000000, width: 2 } }
+        });
+        this.checkmark.anchor.set(0.5);
+        this.checkmark.visible = false;
+        this.addChild(this.checkmark);
+    }
+
+    public updateProgress(current: number, target: number) {
+        this.label.text = `${current} / ${target}`;
+        
+        if (current >= target) {
+            this.label.style.fill = 0x00FF00;
+            this.checkmark.visible = true;
+            this.checkmark.x = this.label.x + 15; // Obok licznika
+            this.checkmark.y = 15;
+        } else {
+            this.label.style.fill = 0xFFFFFF;
+            this.checkmark.visible = false;
+        }
+    }
+
+    public setSize(width: number) {
+        (this['bg'] as PIXI.Graphics).clear().rect(0, 0, width, 30).fill({ color: 0x000000, alpha: 0.3 }).stroke({ width: 1, color: 0xFFFFFF, alpha: 0.2 });
+        this.label.x = width - 10;
+        this.label.y = 15;
+    }
+}
+
 
 export class GameHUD extends PIXI.Container {
     // --- Elementy UI ---
@@ -29,6 +113,10 @@ export class GameHUD extends PIXI.Container {
     // Score UIs
     public scoreUI!: ScoreUI;
     public botScoreUI!: ScoreUI;
+    
+    // NOWOŚĆ: Kontener celów
+    public goalsContainer: PIXI.Container;
+    private goalItems: GoalItem[] = [];
 
     // Layout info (dla GameScene)
     public safeBoardArea: { y: number, height: number } = { y: 0, height: 0 };
@@ -62,12 +150,15 @@ export class GameHUD extends PIXI.Container {
         this.addChild(this.panelLeft);
         this.addChild(this.panelRight);
 
-        // 3. Przycisk wyjścia (domyślny)
+        // 3. Goals Container (dodawany do panelRight w resize)
+        this.goalsContainer = new PIXI.Container();
+        // Nie dodajemy do this od razu, bo będzie dzieckiem panelRight
+
+        // 4. Przycisk wyjścia (domyślny)
         this.updateExitButton("⏏️", this.exitCallback);
     }
 
     public init(activeBlockIds: number[]) {
-        // Reset UI wyników
         if (this.scoreUI) {
             this.panelLeft.removeChild(this.scoreUI.container);
             this.scoreUI.container.destroy();
@@ -77,13 +168,48 @@ export class GameHUD extends PIXI.Container {
             this.botScoreUI.container.destroy();
         }
 
-        // Tworzenie nowych
         this.scoreUI = new ScoreUI(activeBlockIds);
         this.panelLeft.addChild(this.scoreUI.container);
 
         this.botScoreUI = new ScoreUI(activeBlockIds);
         this.botScoreUI.container.visible = (AppConfig.gameMode === 'VS_AI');
         this.panelRight.addChild(this.botScoreUI.container);
+    }
+    
+    // NOWOŚĆ: Inicjalizacja celów
+    public setupGoals(goals: LevelGoal[]) {
+        this.goalItems.forEach(item => item.destroy());
+        this.goalItems = [];
+        this.goalsContainer.removeChildren();
+
+        // Jeśli są cele, dodaj nagłówek
+        if (goals.length > 0) {
+            const title = new PIXI.Text({
+                text: "OBJECTIVES",
+                style: { fontFamily: 'Arial', fontSize: 12, fill: 0xAAAAAA, fontWeight: 'bold' }
+            });
+            title.x = 5;
+            this.goalsContainer.addChild(title);
+        }
+
+        let y = 20;
+        goals.forEach(goal => {
+            const item = new GoalItem(goal);
+            item.y = y;
+            this.goalsContainer.addChild(item);
+            this.goalItems.push(item);
+            y += 35; // Wysokość itemu + odstęp
+        });
+        
+        // Dodajemy kontener do prawego panelu
+        this.panelRight.addChild(this.goalsContainer);
+    }
+
+    // NOWOŚĆ: Aktualizacja postępu
+    public updateGoalProgress(index: number, current: number, target: number) {
+        if (this.goalItems[index]) {
+            this.goalItems[index].updateProgress(current, target);
+        }
     }
 
     public updateExitButton(text: string, callback: () => void) {
@@ -96,15 +222,11 @@ export class GameHUD extends PIXI.Container {
     }
 
     public updateTimeBars(metrics: BarMetric[], width: number) {
-        // Czyścimy
         this.primaryBarFill.clear();
         this.secondaryBarFill.clear();
-        
-        // Tła
         this.primaryBarBg.clear();
         this.secondaryBarBg.clear();
 
-        // 1. Główny pasek
         if (metrics.length > 0) {
             this.primaryBarBg.visible = true;
             this.primaryBarBg.rect(0, 0, width, 6);
@@ -116,10 +238,9 @@ export class GameHUD extends PIXI.Container {
             this.primaryBarBg.visible = false;
         }
 
-        // 2. Drugi pasek
         if (metrics.length > 1) {
             this.secondaryBarBg.visible = true;
-            this.secondaryBarBg.rect(0, 6, width, 6); // Offset Y = 6
+            this.secondaryBarBg.rect(0, 6, width, 6); 
             this.secondaryBarBg.fill({ color: 0x000000, alpha: 0.3 });
 
             this.secondaryBarFill.rect(0, 6, width * metrics[1].percent, 6);
@@ -137,7 +258,6 @@ export class GameHUD extends PIXI.Container {
     }
 
     public updateScoresForMode(mode: string, getSessionAmount: (id: number) => number, getStartAmount: (id: number) => number, activeBlockIds: number[]) {
-        // Helper do masowej aktualizacji pasków gracza
         activeBlockIds.forEach(id => {
             let current = 0, max = 1;
             
@@ -169,44 +289,34 @@ export class GameHUD extends PIXI.Container {
         const BOTTOM_PADDING = 20;
 
         const isPortrait = height > width;
-
-        // 1. Obliczamy zarezerwowane miejsce na panele (w pionie)
         let reservedPanelHeight = 0; 
         if (isPortrait) {
             reservedPanelHeight = Math.max(120, height * 0.20); 
         }
 
-        // Obliczamy obszar dla planszy i zapisujemy go
-        // GameScene skorzysta z tego, żeby wiedzieć gdzie narysować planszę
         const boardY = isPortrait ? HEADER_HEIGHT + reservedPanelHeight + PANEL_GAP : HEADER_HEIGHT;
         const boardHeight = height - boardY - BOTTOM_PADDING;
-        
         this.safeBoardArea = { y: boardY, height: boardHeight };
 
-        // 2. Pozycjonowanie Przycisku Wyjścia
         if (this.exitBtn) {
             this.exitBtn.x = width - 40; 
             this.exitBtn.y = 35;
         }
 
-        // 3. Pozycjonowanie Paneli L/R
         if (isPortrait) {
-            // PIONOWO: Panele obok siebie nad planszą
             const panelY = HEADER_HEIGHT;
             const panelH = reservedPanelHeight;
             const panelW = (width - 20) / 2; 
 
-            // Lewy
             this.panelLeft.x = 10;
             this.panelLeft.y = panelY;
-            this.panelLeftBg.clear(); // Można dodać tło jeśli chcesz widzieć obszar
+            this.panelLeftBg.clear(); 
 
             if (this.scoreUI) {
                 this.scoreUI.layout(panelW);
                 this.scoreUI.container.y = 10;
             }
 
-            // Prawy
             this.panelRight.x = 10 + panelW + 0;
             this.panelRight.y = panelY;
             this.panelRightBg.clear();
@@ -215,30 +325,28 @@ export class GameHUD extends PIXI.Container {
                 this.botScoreUI.layout(panelW);
                 this.botScoreUI.container.y = 10;
             }
+            
+            // Layout dla Celów
+            if (this.goalsContainer.visible) {
+                 this.goalsContainer.y = 10;
+                 // Aktualizacja szerokości itemów
+                 this.goalItems.forEach(item => item.setSize(panelW - 10));
+            }
 
         } else {
-            // POZIOMO: Panele po bokach planszy
-            // Musimy wiedzieć gdzie jest plansza... ale plansza pyta nas o miejsce.
-            // Przyjmijmy, że plansza zajmuje np. 50% szerokości na środku.
-            // Lepsze podejście: GameScene oblicza planszę, a potem my dostosowujemy panele do "dziur".
-            // Ale zróbmy to prościej: panele zajmują to co zostanie po zarezerwowaniu środka.
-            
-            const boardWidth = width * 0.5; // Zakładamy że plansza zajmie ok połowę
+            const panelY = HEADER_HEIGHT;
+            const boardWidth = width * 0.5; 
             const sideWidth = (width - boardWidth) / 2;
             
-            const panelY = HEADER_HEIGHT;
-            
-            // Lewy
             this.panelLeft.x = 10;
             this.panelLeft.y = panelY;
             this.panelLeftBg.clear();
             
             if (this.scoreUI) {
-                this.scoreUI.layout(sideWidth - 20); // Marginesy
+                this.scoreUI.layout(sideWidth - 20); 
                 this.scoreUI.container.y = 20;
             }
 
-            // Prawy (na prawo od "szacowanej" planszy)
             this.panelRight.x = width - sideWidth + 10; 
             this.panelRight.y = panelY;
             this.panelRightBg.clear();
@@ -246,6 +354,12 @@ export class GameHUD extends PIXI.Container {
             if (this.botScoreUI) {
                 this.botScoreUI.layout(sideWidth - 20);
                 this.botScoreUI.container.y = 20;
+            }
+            
+            // Layout dla Celów
+            if (this.goalsContainer.visible) {
+                 this.goalsContainer.y = 20;
+                 this.goalItems.forEach(item => item.setSize(sideWidth - 20));
             }
         }
     }

@@ -9,7 +9,6 @@ export class UpgradeWindow extends PIXI.Container {
     private bg: PIXI.Graphics;
     private contentContainer: PIXI.Container;
     private closeCallback: () => void;
-    // ZMIANA: Callback nie jest już onUpgradeSuccess, tylko onStartConstruction
     private startConstructionCallback: (def: BuildingDefinition) => void;
     private def: BuildingDefinition;
 
@@ -38,7 +37,7 @@ export class UpgradeWindow extends PIXI.Container {
 
     private drawWindow() {
         const WIDTH = 360; 
-        const HEIGHT = 420;
+        const HEIGHT = 460; // Zwiększamy wysokość, żeby zmieścić info o misji
         
         this.bg.clear();
         this.bg.rect(-WIDTH / 2, -HEIGHT / 2, WIDTH, HEIGHT);
@@ -48,6 +47,7 @@ export class UpgradeWindow extends PIXI.Container {
         // --- NAGŁÓWEK ---
         const headerY = -HEIGHT / 2 + 50;
         
+        // Ikona budynku
         if (this.def.storageResourceId !== undefined) {
             const blockDef = BlockRegistry.getById(this.def.storageResourceId);
             if (blockDef && PIXI.Assets.cache.has(blockDef.assetAlias)) {
@@ -94,7 +94,6 @@ export class UpgradeWindow extends PIXI.Container {
         sep.stroke({ width: 2, color: 0xFFFFFF, alpha: 0.1 });
         this.contentContainer.addChild(sep);
 
-
         // --- STATYSTYKI ---
         const capCurrent = this.def.baseCapacity + ((currentLevel - 1) * this.def.capacityPerLevel);
         const capNext = this.def.baseCapacity + ((nextLevel - 1) * this.def.capacityPerLevel);
@@ -107,13 +106,40 @@ export class UpgradeWindow extends PIXI.Container {
         statText.y = headerY + 70;
         this.contentContainer.addChild(statText);
 
+        // --- INFO O MISJI (NOWOŚĆ) ---
+        // Wyświetlamy cel misji: "Zbierz X w 30 ruchach"
+        const missionBg = new PIXI.Graphics();
+        missionBg.roundRect(-WIDTH/2 + 20, headerY + 95, WIDTH - 40, 40, 8);
+        missionBg.fill({ color: 0x000000, alpha: 0.3 });
+        missionBg.stroke({ width: 1, color: 0xFFA500, alpha: 0.5 }); // Pomarańczowa ramka sugeruje wyzwanie
+        this.contentContainer.addChild(missionBg);
 
-        // --- KOSZTY ---
+        const missionText = new PIXI.Text({
+            text: "MISSION: CONSTRUCT", 
+            style: { fontFamily: 'Arial', fontSize: 12, fill: 0xFFA500, fontWeight: 'bold' }
+        });
+        missionText.anchor.set(0, 0.5);
+        missionText.x = -WIDTH/2 + 35;
+        missionText.y = headerY + 115;
+        this.contentContainer.addChild(missionText);
+
+        const limitText = new PIXI.Text({
+            text: "LIMIT: 30 MOVES", 
+            style: { fontFamily: 'Arial', fontSize: 12, fill: 0xFFFFFF, fontWeight: 'bold' }
+        });
+        limitText.anchor.set(1, 0.5);
+        limitText.x = WIDTH/2 - 35;
+        limitText.y = headerY + 115;
+        this.contentContainer.addChild(limitText);
+
+
+        // --- KOSZTY (Cele) ---
         const costs = this.def.getUpgradeCost(nextLevel);
         const canAfford = Resources.hasEnough(costs);
 
-        let costY = headerY + 120;
-        const costTitle = new PIXI.Text({ text: "REQUIRED RESOURCES", style: { fontSize: 12, fill: 0xAAAAAA, fontWeight: 'bold' } });
+        let costY = headerY + 165;
+        // Zmieniamy nagłówek na "TO COLLECT" żeby pasowało do rozgrywki
+        const costTitle = new PIXI.Text({ text: "RESOURCES TO COLLECT:", style: { fontSize: 12, fill: 0xAAAAAA, fontWeight: 'bold' } });
         costTitle.anchor.set(0.5);
         costTitle.y = costY - 20;
         this.contentContainer.addChild(costTitle);
@@ -121,6 +147,7 @@ export class UpgradeWindow extends PIXI.Container {
         costs.forEach(cost => {
             const blockDef = BlockRegistry.getById(cost.resourceId);
             const playerAmount = Resources.getAmount(cost.resourceId);
+            // W trybie construction sprawdzamy czy mamy surowce "na start"
             const isEnough = playerAmount >= cost.amount;
             const color = isEnough ? 0xFFFFFF : 0xFF5555;
 
@@ -145,12 +172,22 @@ export class UpgradeWindow extends PIXI.Container {
             }
 
             const amountTxt = new PIXI.Text({
-                text: `${playerAmount} / ${cost.amount}`,
-                style: { fontFamily: 'Arial', fontSize: 16, fill: color, fontWeight: 'bold' }
+                // Pokazujemy "X / Y", gdzie X to posiadane (które zostaną "postawione" na szali)
+                text: `${cost.amount}`, 
+                style: { fontFamily: 'Arial', fontSize: 18, fill: color, fontWeight: 'bold' }
             });
             amountTxt.anchor.set(1, 0.5); 
             amountTxt.x = WIDTH / 2 - 60;
             costRow.addChild(amountTxt);
+
+            // Nazwa
+            const nameTxt = new PIXI.Text({
+                text: blockDef ? blockDef.name : 'Unknown',
+                style: { fontFamily: 'Arial', fontSize: 14, fill: 0xCCCCCC }
+            });
+            nameTxt.anchor.set(0, 0.5);
+            nameTxt.x = -WIDTH / 2 + 100;
+            costRow.addChild(nameTxt);
 
             costY += 40;
         });
@@ -165,11 +202,8 @@ export class UpgradeWindow extends PIXI.Container {
         btnClose.y = btnY;
         this.contentContainer.addChild(btnClose);
 
-        // ZMIANA: Przycisk START zamiast UPGRADE
-        // Jeśli nie stać, nie pozwalamy wejść do poziomu budowy (bo od razu przegramy)
-        const btnStart = new Button("BUILD", 120, 44, canAfford ? 0x00AA00 : 0x333333, () => {
+        const btnStart = new Button("START", 120, 44, canAfford ? 0x00AA00 : 0x333333, () => {
             if (canAfford) {
-                // Nie wydajemy tutaj! Przekazujemy sterowanie do sceny.
                 this.startConstructionCallback(this.def);
                 this.closeCallback();
             }

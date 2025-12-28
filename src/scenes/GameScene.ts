@@ -5,7 +5,7 @@ import { GameManager } from '../GameManager';
 import { SoundManager } from '../SoundManager';
 import { HumanPlayerController, BotPlayerController } from '../PlayerController';
 import { BoardRenderer } from '../views/BoardRenderer'; 
-import { GameHUD, type BarMetric } from '../views/GameHUD'; // Importujemy nowy HUD
+import { GameHUD, type BarMetric } from '../views/GameHUD'; 
 import { 
     COLS, ROWS, TILE_SIZE, 
     PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme 
@@ -13,6 +13,8 @@ import {
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef';
 import { type LevelConfig, LEVEL_1 } from '../LevelDef'; 
+import { Resources } from '../core/ResourceManager';
+import { Buildings } from '../core/BuildingManager';
 
 export class GameScene extends PIXI.Container implements Scene {
     private app: PIXI.Application;
@@ -21,7 +23,6 @@ export class GameScene extends PIXI.Container implements Scene {
     private soundManager: SoundManager;
     private renderer: BoardRenderer; 
     
-    // Zamiast luźnych zmiennych, mamy jedną klasę HUD
     private hud: GameHUD;
     
     private backToMenuCallback: () => void;
@@ -38,12 +39,9 @@ export class GameScene extends PIXI.Container implements Scene {
         this.soundManager = new SoundManager();
         this.logic = new BoardLogic();
         
-        // 1. Warstwa Gry
         this.renderer = new BoardRenderer(app, this.logic);
         this.addChild(this.renderer); 
 
-        // 2. Warstwa HUD (GameHUD dziedziczy po Container)
-        // Przekazujemy callback do wyjścia już w konstruktorze
         this.hud = new GameHUD(() => {
             this.gameManager.resetGame();
             this.backToMenuCallback();
@@ -57,8 +55,6 @@ export class GameScene extends PIXI.Container implements Scene {
         };
 
         this.gameManager = new GameManager(this.logic);
-        // setupUI() usunięte, bo robi to GameHUD w konstruktorze
-        
         this.gameManager.onGameFinished = (reason, win) => this.onGameFinished(reason, win);
     }
 
@@ -70,13 +66,11 @@ export class GameScene extends PIXI.Container implements Scene {
         Random.setSeed(AppConfig.seed);
         this.gameManager.clearPlayers();
         
-        const activeBlocks = BlockRegistry.getAll().slice(0, AppConfig.blockTypes);
-        const activeBlockIds = activeBlocks.map(b => b.id);
+        const levelToLoad = this.pendingLevelConfig || LEVEL_1; 
+        const activeBlockIds = levelToLoad.availableBlockIds;
         
-        // Inicjalizacja HUD (tworzenie slotów dla surowców)
         this.hud.init(activeBlockIds);
 
-        // Setup Graczy
         const inputContainer = this.renderer.getInputContainer();
         const human = new HumanPlayerController(PLAYER_ID_1, this.gameManager, this.logic, inputContainer, this.soundManager);
         this.gameManager.registerPlayer(human);
@@ -87,34 +81,39 @@ export class GameScene extends PIXI.Container implements Scene {
         }
 
         this.renderer.initVisuals();
-
-        const levelToLoad = this.pendingLevelConfig || LEVEL_1; 
         this.gameManager.startLevel(levelToLoad); 
 
-        // Konfiguracja przycisku i wartości początkowych w HUD
         const mode = this.gameManager.currentLevelMode;
 
-        if (mode === 'GATHERING') {
-            this.hud.updateExitButton("🚚", () => this.gameManager.finishExpedition());
-        } else if (mode === 'CONSTRUCTION') {
+        // --- KONFIGURACJA HUD (CELE I PRZYCISKI) ---
+        if (mode === 'CONSTRUCTION') {
+            // W trybie budowy pokazujemy listę celów w prawym panelu
+            this.hud.setupGoals(levelToLoad.goals);
+            this.hud.goalsContainer.visible = true;
+            this.hud.botScoreUI.container.visible = false; // Ukrywamy bota (kolizja miejsca)
+
             this.hud.updateExitButton("🏳️", () => { this.gameManager.resetGame(); this.backToMenuCallback(); });
+        } else if (mode === 'GATHERING') {
+            this.hud.goalsContainer.visible = false;
+            this.hud.updateExitButton("🚚", () => this.gameManager.finishExpedition());
         } else {
+            this.hud.goalsContainer.visible = false;
             this.hud.updateExitButton("🏳️", () => { this.gameManager.resetGame(); this.backToMenuCallback(); });
         }
         
-        // Inicjalne wartości pasków
+        // Paski zasobów (Lewy Panel)
         this.hud.updateScoresForMode(mode, 
             (id) => this.gameManager.getSessionResourceAmount(id), 
             (id) => this.gameManager.getStartResourceAmount(id), 
             activeBlockIds
         );
 
-        // Ukrywanie bota w solo
-        if (AppConfig.gameMode === 'SOLO') {
-            this.hud.botScoreUI.container.visible = false;
-        } else {
+        if (AppConfig.gameMode === 'VS_AI') {
             this.hud.botScoreUI.container.visible = true;
             this.hud.botScoreUI.reset();
+        } else {
+            // W solo ukrywamy bota, chyba że tryb budowy to nadpisuje (już obsłużone wyżej)
+            if (mode !== 'CONSTRUCTION') this.hud.botScoreUI.container.visible = false;
         }
 
         this.logic.removeAllListeners(); 
@@ -122,22 +121,26 @@ export class GameScene extends PIXI.Container implements Scene {
         this.gameManager.bindEvents();
         this.gameManager.onDeadlockFixed = (id, type) => this.onDeadlockFixed(id, type);
         
-        // --- GAME LOOP UPDATE ---
         this.logic.on('explode', (data: { id: number, typeId: number, x: number, y: number }) => {
             const currentId = this.gameManager.getCurrentPlayerId();
             
-            // Jeśli to tura bota, aktualizujemy jego UI
             if (AppConfig.gameMode === 'VS_AI' && currentId === PLAYER_ID_2) {
-                // Tutaj uproszczenie: bot w trybie construction/gathering działałby tak samo jak gracz
-                // W trybie standard po prostu +1
                 this.hud.updateScore(data.typeId, this.gameManager.getSessionResourceAmount(data.typeId), 1.0, true);
             } else {
-                // Aktualizacja UI gracza (używamy helpera z HUD)
                 this.hud.updateScoresForMode(mode, 
                     (id) => this.gameManager.getSessionResourceAmount(id), 
                     (id) => this.gameManager.getStartResourceAmount(id), 
-                    [data.typeId] // Aktualizujemy tylko ten jeden typ
+                    [data.typeId] 
                 );
+            }
+            
+            // --- AKTUALIZACJA CELÓW ---
+            if (mode === 'CONSTRUCTION') {
+                const goals = this.gameManager.getCurrentGoals();
+                goals.forEach((goal, idx) => {
+                    const progress = this.gameManager.getGoalProgress(idx);
+                    this.hud.updateGoalProgress(idx, progress, goal.amount);
+                });
             }
 
             this.soundManager.playPop();
@@ -150,7 +153,6 @@ export class GameScene extends PIXI.Container implements Scene {
              this.onDeadlockFixed(fix.id, fix.targetType);
         });
 
-        // Wymuszamy resize
         this.resize(this.app.screen.width, this.app.screen.height);
     }
 
@@ -159,7 +161,7 @@ export class GameScene extends PIXI.Container implements Scene {
         this.logic.update(delta);
         
         if (this.hud.scoreUI) this.hud.scoreUI.update(delta);
-        this.updateBars(); // Oblicza metryki i wysyła do HUD
+        this.updateBars();
         
         const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
         const selectedId = human ? human.getSelectedId() : -1;
@@ -180,7 +182,6 @@ export class GameScene extends PIXI.Container implements Scene {
 
         const metrics: BarMetric[] = [];
 
-        // 1. Priorytet: Czas Tury
         if (isVs) {
             let p = turnTimer / maxTurn;
             let c = 0x00AAFF; 
@@ -193,7 +194,6 @@ export class GameScene extends PIXI.Container implements Scene {
             metrics.push({ percent: p, color: c });
         }
 
-        // 2. Priorytet: Ruchy
         if (hasMoveLimit) {
             let p = moves / maxMoves;
             let c = 0xFFA500; 
@@ -204,14 +204,14 @@ export class GameScene extends PIXI.Container implements Scene {
             let c = 0x00FF00;
             metrics.push({ percent: p, color: c });
         } else if (moves < 0 && metrics.length === 0) {
-            // Freeplay
             metrics.push({ percent: 1.0, color: 0x00AAFF });
         }
 
-        // Wysyłamy do HUD
         this.hud.updateTimeBars(metrics, this.app.screen.width);
     }
-
+    
+    // ... (reszta metod bez zmian)
+    
     private onDeadlockFixed(id: number, type: number) {
         this.soundManager.playPop();
         this.renderer.setHints([]);
@@ -251,15 +251,10 @@ export class GameScene extends PIXI.Container implements Scene {
 
     public resize(width: number, height: number) {
         this.x = 0; this.y = 0; this.scale.set(1);
-
-        // 1. Zlecamy HUDowi ułożenie swoich elementów
         this.hud.resize(width, height);
 
-        // 2. Pobieramy od HUDa bezpieczny obszar dla planszy
         const safeArea = this.hud.safeBoardArea;
-        
-        // 3. Skalujemy i centrujemy planszę w tym obszarze
-        const availableWidth = height > width ? width : width * 0.5; // W poziomie ograniczamy szerokość
+        const availableWidth = height > width ? width : width * 0.5;
         const availableHeight = safeArea.height;
 
         const scale = Math.min(
@@ -269,10 +264,8 @@ export class GameScene extends PIXI.Container implements Scene {
         
         this.renderer.scale.set(scale);
         this.renderer.x = (width - (this.BOARD_LOGICAL_WIDTH * scale)) / 2;
-        // Plansza zawsze przyklejona do dołu bezpiecznego obszaru (minus margines)
         this.renderer.y = (safeArea.y + safeArea.height) - (this.BOARD_LOGICAL_HEIGHT * scale);
         
-        // Fix: Jeśli plansza "ucieka" za wysoko w poziomie, centrujemy ją w Y
         if (width > height) {
              this.renderer.y = safeArea.y + (safeArea.height - (this.BOARD_LOGICAL_HEIGHT * scale)) / 2;
         }
