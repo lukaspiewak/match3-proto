@@ -36,3 +36,6 @@ export { MoveFinder, type BestMove } from './ai/MoveFinder';
 // System akcji specjalnych (Strategy)
 export { ActionManager } from './actions/ActionManager';
 export { type IBlockAction } from './actions/IBlockAction';
+
+// Reguły / cele poziomu (pluginowalne)
+export { type GoalRule, type GoalProgress, CollectGoal, ScoreGoal } from './rules/GoalRule';

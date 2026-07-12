@@ -3,9 +3,18 @@ import { PlayerController } from './PlayerController';
 import {
     TURN_TIME_LIMIT, CellState, AppConfig
 } from './engine/Config';
-import { type LevelConfig, type LevelGoal } from './LevelDef'; // Dodano LevelGoal
-import { Resources } from './core/ResourceManager';
-import { Buildings } from './core/BuildingManager';
+import { type GoalRule, CollectGoal, ScoreGoal } from './engine/rules/GoalRule';
+import { type LevelConfig, type LevelGoal } from './LevelDef';
+import { type EconomyMode, type Inventory, resolveEconomyMode } from './economy/EconomyMode';
+
+/** Buduje pluginowalne cele z deklaratywnej konfiguracji poziomu. */
+function buildGoals(goals: LevelGoal[]): GoalRule[] {
+    return goals.map(g =>
+        g.type === 'COLLECT'
+            ? new CollectGoal(g.targetId ?? -1, g.amount)
+            : new ScoreGoal(g.amount)
+    );
+}
 
 export class GameManager {
     private logic: BoardLogic;
@@ -13,11 +22,12 @@ export class GameManager {
     private currentPlayerIndex: number = 0;
 
     private currentLevel: LevelConfig | null = null;
-    private goalProgress: number[] = [];
+    private goalRules: GoalRule[] = [];
     private currentScore: number = 0;
-    
-    private sessionInventory: { [id: number]: number } = {};
-    private startInventory: { [id: number]: number } = {};
+
+    private economyMode: EconomyMode = resolveEconomyMode('STANDARD');
+    private sessionInventory: Inventory = {};
+    private startInventory: Inventory = {};
 
     public movesLeft: number = 0;
     public timeLeft: number = 0;
@@ -56,7 +66,7 @@ export class GameManager {
     
     // NOWOŚĆ: Gettery dla UI celów
     public getCurrentGoals(): LevelGoal[] { return this.currentLevel ? this.currentLevel.goals : []; }
-    public getGoalProgress(index: number): number { return this.goalProgress[index] || 0; }
+    public getGoalProgress(index: number): number { return this.goalRules[index] ? this.goalRules[index].progress().current : 0; }
 
     // --- Core Logic ---
     public registerPlayer(player: PlayerController) { this.players.push(player); }
@@ -76,16 +86,11 @@ export class GameManager {
         this.timeLeft = level.timeLimit;
         this.maxTime = level.timeLimit;
 
-        this.goalProgress = level.goals.map(() => 0);
-        
-        if (level.mode === 'CONSTRUCTION') {
-            this.sessionInventory = Resources.getAll();
-            this.startInventory = { ...this.sessionInventory };
-            console.log("🏗️ Construction Start. Inventory:", this.sessionInventory);
-        } else {
-            this.sessionInventory = {};
-            this.startInventory = {};
-        }
+        this.economyMode = resolveEconomyMode(level.mode);
+        this.goalRules = buildGoals(level.goals);
+
+        this.sessionInventory = this.economyMode.initInventory();
+        this.startInventory = { ...this.sessionInventory };
 
         console.log(`Loading Level: ${level.id} (${level.mode})`);
         this.logic.initBoard(level.layout, level.availableBlockIds);
@@ -157,52 +162,24 @@ export class GameManager {
         if (!this.currentLevel || this.isGameOver) return;
         this.currentScore += 10;
 
-        if (this.currentLevel.mode === 'CONSTRUCTION') {
-            if (this.sessionInventory[typeId] === undefined) this.sessionInventory[typeId] = 0;
-            this.sessionInventory[typeId]--; 
-            
-            if (this.sessionInventory[typeId] < 0) {
-                this.finishGame(`BANKRUPTCY! (Ran out of Block ${typeId})`, false);
-                return;
-            }
-        } 
-        else if (this.currentLevel.mode === 'GATHERING') {
-            const currentSession = this.sessionInventory[typeId] || 0;
-
-            if (Resources.hasSpace(typeId, currentSession)) {
-                if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
-                this.sessionInventory[typeId]++;
-            } else {
-                console.log(`Inventory FULL for block ${typeId}`);
-            }
-        }
-        else {
-            if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
-            this.sessionInventory[typeId]++;
+        // Efekt uboczny trybu (inwentarz); może zwrócić powód porażki (np. bankructwo).
+        const failReason = this.economyMode.collect(typeId, this.sessionInventory);
+        if (failReason) {
+            this.finishGame(failReason, false);
+            return;
         }
 
-        // Update Goals
-        this.currentLevel.goals.forEach((goal, index) => {
-            if (goal.type === 'COLLECT' && goal.targetId === typeId) {
-                this.goalProgress[index]++;
-            } else if (goal.type === 'SCORE') {
-                this.goalProgress[index] = this.currentScore;
-            }
-        });
+        // Aktualizacja pluginowalnych celów.
+        this.goalRules.forEach(goal => goal.onBlockDestroyed(typeId, this.currentScore));
 
         this.checkWinLossCondition();
     }
 
     private checkWinLossCondition() {
         if (!this.currentLevel || this.isGameOver) return;
-        if (this.currentLevel.mode === 'GATHERING') return;
+        if (!this.economyMode.checksGoals) return;
 
-        let allGoalsMet = true;
-        this.currentLevel.goals.forEach((goal, index) => {
-            if (this.goalProgress[index] < goal.amount) allGoalsMet = false;
-        });
-
-        if (allGoalsMet) {
+        if (this.goalRules.every(g => g.isMet())) {
             this.finishGame("LEVEL COMPLETE!", true);
             return;
         }
@@ -214,19 +191,9 @@ export class GameManager {
     private finishGame(reason: string, win: boolean) {
         this.isGameOver = true;
         this.gameStatusText = win ? "VICTORY!" : "DEFEAT";
-        
+
         if (win && this.currentLevel) {
-            if (this.currentLevel.mode === 'CONSTRUCTION') {
-                Resources.setInventory(this.sessionInventory);
-                // Upgrade po wygranej
-                if (this.currentLevel.targetBuildingId) {
-                    Buildings.upgradeBuilding(this.currentLevel.targetBuildingId);
-                }
-            } else {
-                for (const [id, amount] of Object.entries(this.sessionInventory)) {
-                    Resources.addResource(parseInt(id), amount);
-                }
-            }
+            this.economyMode.saveOnWin(this.sessionInventory, this.currentLevel);
             console.log("💾 Progress Saved.");
         } else {
             console.log("❌ No Progress Saved (Defeat/Bankruptcy).");
