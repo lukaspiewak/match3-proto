@@ -81,7 +81,8 @@ export const LEVEL_1: LevelConfig = {
     timeLimit: 0,
     availableBlockIds: [0, 1, 2, 3],
     goals: [
-        { type: 'COLLECT', targetId: 200, amount: 5 }
+        // Kamień (3) jest w puli — zbieramy go matchując. (Wcześniej: mur 200, niewykonalne.)
+        { type: 'COLLECT', targetId: 3, amount: 12 }
     ],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],
@@ -106,13 +107,14 @@ export const LEVEL_2: LevelConfig = {
     goals: [
         { type: 'SCORE', amount: 3000 }
     ],
+    // Lód rozrzucony (brak linii >=3 na starcie → brak darmowego matcha).
     layout: [
         [R_, R_, R_, R_, R_, R_, S_],
-        [R_, I_, I_, I_, I_, I_, S_],
-        [R_, I_, R_, R_, R_, I_, S_],
-        [R_, I_, R_, R_, R_, I_, S_],
-        [R_, I_, R_, R_, R_, I_, S_],
-        [R_, I_, I_, I_, I_, I_, S_],
+        [R_, I_, R_, R_, I_, R_, S_],
+        [R_, R_, R_, I_, R_, R_, S_],
+        [R_, I_, R_, R_, I_, R_, S_],
+        [R_, R_, R_, I_, R_, R_, S_],
+        [R_, I_, R_, R_, I_, R_, S_],
         [R_, R_, R_, R_, R_, R_, S_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_]
