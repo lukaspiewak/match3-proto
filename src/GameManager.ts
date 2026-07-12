@@ -99,6 +99,7 @@ export class GameManager {
     // --- UI Helpers & Getters ---
     public getSessionResourceAmount(typeId: number): number { return this.sessionInventory[typeId] || 0; }
     public getStartResourceAmount(typeId: number): number { return this.startInventory[typeId] || 0; }
+    public getScore(): number { return this.currentScore; }
     public get currentLevelMode() { return this.currentLevel ? this.currentLevel.mode : 'STANDARD'; }
     
     // NOWOŚĆ: Gettery dla UI celów
