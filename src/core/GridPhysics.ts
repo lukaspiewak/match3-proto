@@ -1,9 +1,10 @@
-import { COLS, ROWS, CellState, type Cell, type GravityDir, AppConfig } from '../Config';
+import { CellState, type Cell, type GravityDir, type GameConfig } from '../Config';
 import { BlockRegistry } from '../BlockDef';
 
 export class GridPhysics {
     private cells: Cell[];
-    
+    private config: GameConfig;
+
     // Parametry fizyki
     private readonly SWAP_SPEED = 0.20;
     private readonly GRAVITY_ACCEL = 0.008;
@@ -11,19 +12,20 @@ export class GridPhysics {
 
     public dirX: number = 0;
     public dirY: number = 0;
-    
+
     // NOWOŚĆ: Lista dozwolonych bloków do spawnowania
     public allowedBlockIds: number[] = [];
 
     public onDropDown: ((id: number) => void) | null = null;
     public onNeedsMatchCheck: (() => void) | null = null;
 
-    constructor(cells: Cell[]) {
+    constructor(cells: Cell[], config: GameConfig) {
         this.cells = cells;
-        this.setGravity(AppConfig.gravityDir);
-        
+        this.config = config;
+        this.setGravity(config.gravityDir);
+
         // Domyślna lista (jeśli nikt nie ustawi innej)
-        for(let i=0; i<AppConfig.blockTypes; i++) this.allowedBlockIds.push(i);
+        for(let i=0; i<config.blockTypes; i++) this.allowedBlockIds.push(i);
     }
 
     public setGravity(direction: GravityDir) {
@@ -40,11 +42,13 @@ export class GridPhysics {
         this.updateMovement(delta);
     }
 
-    private updateGravityLogic() { 
+    private updateGravityLogic() {
+        const cols = this.config.cols;
+        const rows = this.config.rows;
         const isVertical = (this.dirY !== 0);
-        const primarySize = isVertical ? COLS : ROWS;
-        const secondarySize = isVertical ? ROWS : COLS;
-        
+        const primarySize = isVertical ? cols : rows;
+        const secondarySize = isVertical ? rows : cols;
+
         for (let p = 0; p < primarySize; p++) {
             let emptySlots = 0;
             let start = (this.dirX > 0 || this.dirY > 0) ? secondarySize - 1 : 0;
@@ -55,9 +59,9 @@ export class GridPhysics {
             for (let s = start; s !== end; s += step) {
                 const col = isVertical ? p : s;
                 const row = isVertical ? s : p;
-                const idx = col + row * COLS;
+                const idx = col + row * cols;
                 const cell = this.cells[idx];
-                
+
                 const def = (cell.typeId !== -1) ? BlockRegistry.getById(cell.typeId) : null;
 
                 if (cell.typeId === -1) { 
@@ -69,7 +73,7 @@ export class GridPhysics {
                 else if (emptySlots > 0) {
                     const targetCol = col + (this.dirX * emptySlots);
                     const targetRow = row + (this.dirY * emptySlots);
-                    const targetIdx = targetCol + targetRow * COLS;
+                    const targetIdx = targetCol + targetRow * cols;
                     const targetCell = this.cells[targetIdx];
                     
                     targetCell.typeId = cell.typeId; 
@@ -95,7 +99,7 @@ export class GridPhysics {
                 
                 const finalCol = isVertical ? p : logicalS;
                 const finalRow = isVertical ? logicalS : p;
-                const idx = finalCol + finalRow * COLS;
+                const idx = finalCol + finalRow * cols;
                 const cell = this.cells[idx];
                 
                 // ZMIANA: Używamy listy dozwolonych bloków
@@ -115,9 +119,9 @@ export class GridPhysics {
                 let spawnY = finalRow;
 
                 if (this.dirY === 1) spawnY = -(i + 1);
-                else if (this.dirY === -1) spawnY = ROWS + (emptySlots - i);
+                else if (this.dirY === -1) spawnY = rows + (emptySlots - i);
                 else if (this.dirX === 1) spawnX = -(i + 1);
-                else if (this.dirX === -1) spawnX = COLS + (emptySlots - i);
+                else if (this.dirX === -1) spawnX = cols + (emptySlots - i);
 
                 cell.x = spawnX;
                 cell.y = spawnY;
@@ -126,7 +130,7 @@ export class GridPhysics {
     }
 
     private updateMovement(delta: number) {
-        // ... (bez zmian) ...
+        const rows = this.config.rows;
         for (const cell of this.cells) {
             if (cell.typeId === -1) continue;
             
@@ -152,7 +156,7 @@ export class GridPhysics {
                     
                     if (this.onNeedsMatchCheck) this.onNeedsMatchCheck();
 
-                    if (this.onDropDown && cell.y === ROWS - 1 && this.dirY === 1) {
+                    if (this.onDropDown && cell.y === rows - 1 && this.dirY === 1) {
                         this.onDropDown(cell.id);
                     }
                 }

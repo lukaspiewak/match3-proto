@@ -99,8 +99,8 @@ export class BuildingCard extends PIXI.Container {
 
         // 5. Teksty
         const textStartX = 90;
-        const titleStyle = { fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', fill: 0xFFFFFF, dropShadow: true, dropShadowColor: '#000000', dropShadowDistance: 2, dropShadowAngle: Math.PI / 4 };
-        const lvlStyle = { fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', fill: 0xFFD700 }; // Złoty kolor dla levelu
+        const titleStyle: Partial<PIXI.TextStyleOptions> = { fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', fill: 0xFFFFFF, dropShadow: { color: '#000000', distance: 2, angle: Math.PI / 4 } };
+        const lvlStyle: Partial<PIXI.TextStyleOptions> = { fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', fill: 0xFFD700 }; // Złoty kolor dla levelu
 
         const title = new PIXI.Text({ text: this.def.name.toUpperCase(), style: titleStyle });
         title.x = textStartX; title.y = this.PADDING;

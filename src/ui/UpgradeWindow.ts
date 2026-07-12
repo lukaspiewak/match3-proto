@@ -69,7 +69,7 @@ export class UpgradeWindow extends PIXI.Container {
 
         const title = new PIXI.Text({
             text: this.def.name.toUpperCase(),
-            style: { fontFamily: 'Arial', fontSize: 22, fontWeight: 'bold', fill: 0xFFFFFF, dropShadow: true, dropShadowDistance: 2 }
+            style: { fontFamily: 'Arial', fontSize: 22, fontWeight: 'bold', fill: 0xFFFFFF, dropShadow: { distance: 2 } }
         });
         title.anchor.set(0, 0.5); 
         title.x = -WIDTH / 2 + 110; 

@@ -1,7 +1,7 @@
 import { BoardLogic } from './BoardLogic';
 import { PlayerController } from './PlayerController';
-import { 
-    PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig 
+import {
+    TURN_TIME_LIMIT, CellState, AppConfig
 } from './Config';
 import { type LevelConfig, type LevelGoal } from './LevelDef'; // Dodano LevelGoal
 import { Resources } from './core/ResourceManager';
@@ -167,9 +167,7 @@ export class GameManager {
             }
         } 
         else if (this.currentLevel.mode === 'GATHERING') {
-            const currentGlobal = Resources.getAmount(typeId);
             const currentSession = this.sessionInventory[typeId] || 0;
-            const maxCapacity = Buildings.getResourceCapacity(typeId);
 
             if (Resources.hasSpace(typeId, currentSession)) {
                 if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;

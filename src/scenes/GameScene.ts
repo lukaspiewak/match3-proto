@@ -6,15 +6,12 @@ import { SoundManager } from '../SoundManager';
 import { HumanPlayerController, BotPlayerController } from '../PlayerController';
 import { BoardRenderer } from '../views/BoardRenderer'; 
 import { GameHUD, type BarMetric } from '../views/GameHUD'; 
-import { 
-    COLS, ROWS, TILE_SIZE, 
-    PLAYER_ID_1, PLAYER_ID_2, AppConfig, CurrentTheme 
+import {
+    TILE_SIZE,
+    PLAYER_ID_1, PLAYER_ID_2, AppConfig
 } from '../Config';
 import { Random } from '../Random';
-import { BlockRegistry } from '../BlockDef';
-import { type LevelConfig, LEVEL_1 } from '../LevelDef'; 
-import { Resources } from '../core/ResourceManager';
-import { Buildings } from '../core/BuildingManager';
+import { type LevelConfig, LEVEL_1 } from '../LevelDef';
 
 export class GameScene extends PIXI.Container implements Scene {
     private app: PIXI.Application;
@@ -28,8 +25,9 @@ export class GameScene extends PIXI.Container implements Scene {
     private backToMenuCallback: () => void;
     private pendingLevelConfig: LevelConfig | null = null;
 
-    private readonly BOARD_LOGICAL_WIDTH = (COLS * TILE_SIZE);
-    private readonly BOARD_LOGICAL_HEIGHT = (ROWS * TILE_SIZE);
+    // Wymiary planszy w pikselach — pochodne z konfiguracji aktywnej instancji logiki.
+    private get BOARD_LOGICAL_WIDTH() { return this.logic.cols * TILE_SIZE; }
+    private get BOARD_LOGICAL_HEIGHT() { return this.logic.rows * TILE_SIZE; }
 
     constructor(app: PIXI.Application, backToMenuCallback: () => void) {
         super();
@@ -212,7 +210,7 @@ export class GameScene extends PIXI.Container implements Scene {
     
     // ... (reszta metod bez zmian)
     
-    private onDeadlockFixed(id: number, type: number) {
+    private onDeadlockFixed(_id: number, _type: number) {
         this.soundManager.playPop();
         this.renderer.setHints([]);
     }

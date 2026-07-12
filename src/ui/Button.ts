@@ -2,10 +2,10 @@ import * as PIXI from 'pixi.js';
 
 export class Button extends PIXI.Container {
     private bg: PIXI.Graphics;
-    private label: PIXI.Text;
+    private labelText: PIXI.Text;
     private onClick: () => void;
 
-    constructor(text: string, width: number, height: number, color: number, onClick: () => void) {
+    constructor(text: string, width: number, height: number, color: number, onClick: () => void, _isIcon: boolean = false) {
         super();
         this.onClick = onClick;
 
@@ -15,12 +15,12 @@ export class Button extends PIXI.Container {
         this.bg.stroke({ width: 4, color: 0xFFFFFF });
         this.addChild(this.bg);
 
-        this.label = new PIXI.Text({
+        this.labelText = new PIXI.Text({
             text: text,
             style: { fontFamily: 'Arial', fontSize: 20, fill: 0xFFFFFF, fontWeight: 'bold', align: 'center' }
         });
-        this.label.anchor.set(0.5);
-        this.addChild(this.label);
+        this.labelText.anchor.set(0.5);
+        this.addChild(this.labelText);
 
         this.eventMode = 'static';
         this.cursor = 'pointer';
@@ -37,8 +37,7 @@ export class Button extends PIXI.Container {
             this.onClick();
         });
 
-        this.on('pointerupoutside', (e) => {
-            // e.stopPropagation(); // Tu opcjonalnie, ale warto
+        this.on('pointerupoutside', () => {
             this.bg.alpha = 1.0;
         });
 
@@ -48,6 +47,6 @@ export class Button extends PIXI.Container {
     }
 
     public setText(text: string) {
-        this.label.text = text;
+        this.labelText.text = text;
     }
 }

@@ -3,12 +3,11 @@ import { BoardLogic } from '../BoardLogic';
 import { BlockView } from './BlockView';
 import { ParticleSystem } from '../ParticleSystem';
 import { BlockRegistry } from '../BlockDef';
-import { TILE_SIZE, GAP, CellState, COLS, ROWS, CurrentTheme, VisualConfig } from '../Config';
+import { TILE_SIZE, GAP, CellState, CurrentTheme, VisualConfig } from '../Config';
 
 export class BoardRenderer extends PIXI.Container {
     private board: BoardLogic;
-    private app: PIXI.Application;
-    
+
     // Kontener grupujący (dla efektu Shake)
     // Wszystko co ma się trząść (tło, klocki, cząsteczki) trafia tutaj.
     private shakeContainer: PIXI.Container;
@@ -31,7 +30,6 @@ export class BoardRenderer extends PIXI.Container {
 
     constructor(app: PIXI.Application, board: BoardLogic) {
         super();
-        this.app = app;
         this.board = board;
 
         // 1. Tworzymy kontener pośredni dla efektu Shake
@@ -56,13 +54,15 @@ export class BoardRenderer extends PIXI.Container {
     }
 
     private setupBackground() {
+        const cols = this.board.cols;
+        const rows = this.board.rows;
         const boardBg = new PIXI.Graphics();
-        boardBg.rect(-GAP, -GAP, (COLS * TILE_SIZE) + GAP, (ROWS * TILE_SIZE) + GAP);
+        boardBg.rect(-GAP, -GAP, (cols * TILE_SIZE) + GAP, (rows * TILE_SIZE) + GAP);
         boardBg.fill({ color: CurrentTheme.panelBg, alpha: 1.0 });
         this.bgContainer.addChild(boardBg);
 
-        for(let i=0; i<COLS * ROWS; i++) {
-            const col = i % COLS; const row = Math.floor(i / COLS);
+        for(let i=0; i<cols * rows; i++) {
+            const col = i % cols; const row = Math.floor(i / cols);
             const slot = new PIXI.Graphics();
             slot.rect(0, 0, TILE_SIZE - GAP, TILE_SIZE - GAP);
             slot.fill({ color: CurrentTheme.slotBg, alpha: 1.0 });
@@ -72,7 +72,7 @@ export class BoardRenderer extends PIXI.Container {
 
         // Maska dla klocków (żeby nie wychodziły poza planszę przy wlatywaniu)
         const mask = new PIXI.Graphics();
-        mask.rect(0, 0, COLS * TILE_SIZE, ROWS * TILE_SIZE);
+        mask.rect(0, 0, cols * TILE_SIZE, rows * TILE_SIZE);
         mask.fill(0xffffff);
         this.blocksContainer.addChild(mask);
         this.blocksContainer.mask = mask;
@@ -92,8 +92,9 @@ export class BoardRenderer extends PIXI.Container {
     };
 
     private onDamage = (data: { id: number, hp: number, maxHp: number }) => {
-        const drawX = (data.id % COLS) * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-        const drawY = Math.floor(data.id / COLS) * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+        const cols = this.board.cols;
+        const drawX = (data.id % cols) * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+        const drawY = Math.floor(data.id / cols) * TILE_SIZE + (TILE_SIZE - GAP) / 2;
         
         const cell = this.board.cells[data.id];
         const blockDef = BlockRegistry.getById(cell.typeId);
@@ -125,7 +126,7 @@ export class BoardRenderer extends PIXI.Container {
         
         // Przywracamy maskę po czyszczeniu kontenera
         const mask = new PIXI.Graphics();
-        mask.rect(0, 0, COLS * TILE_SIZE, ROWS * TILE_SIZE);
+        mask.rect(0, 0, this.board.cols * TILE_SIZE, this.board.rows * TILE_SIZE);
         mask.fill(0xffffff);
         this.blocksContainer.addChild(mask);
         this.blocksContainer.mask = mask;

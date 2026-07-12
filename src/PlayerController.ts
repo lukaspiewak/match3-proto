@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { BoardLogic } from './BoardLogic';
 // ZMIANA: import type dla GameManager aby uniknąć Circular Dependency w runtime
 import type { GameManager } from './GameManager';
-import { TILE_SIZE, COLS } from './Config';
+import { TILE_SIZE } from './Config';
 import { SoundManager } from './SoundManager';
 import { MoveFinder } from './ai/MoveFinder';
 
@@ -49,12 +49,14 @@ export class HumanPlayerController extends PlayerController {
     }
 
     private getBoardPos(e: PIXI.FederatedPointerEvent): { col: number, row: number, id: number } | null {
+        const cols = this.logic.cols;
+        const rows = this.logic.rows;
         const localPos = this.boardContainer.toLocal(e.global);
         const col = Math.floor(localPos.x / TILE_SIZE);
         const row = Math.floor(localPos.y / TILE_SIZE);
 
-        if (col >= 0 && col < COLS && row >= 0 && row < 9) { // 9 = ROWS
-            return { col, row, id: col + row * COLS };
+        if (col >= 0 && col < cols && row >= 0 && row < rows) {
+            return { col, row, id: col + row * cols };
         }
         return null;
     }
@@ -120,16 +122,17 @@ export class HumanPlayerController extends PlayerController {
     private tryMoveTo(targetId: number) {
         if (this.selectedId === -1) return;
 
+        const cols = this.logic.cols;
         const diff = Math.abs(targetId - this.selectedId);
-        const isAdjacent = (diff === 1 && Math.floor(targetId / COLS) === Math.floor(this.selectedId / COLS)) || diff === COLS;
+        const isAdjacent = (diff === 1 && Math.floor(targetId / cols) === Math.floor(this.selectedId / cols)) || diff === cols;
 
         if (isAdjacent) {
             let dirX = 0;
             let dirY = 0;
             if (targetId === this.selectedId + 1) dirX = 1;
             else if (targetId === this.selectedId - 1) dirX = -1;
-            else if (targetId === this.selectedId + COLS) dirY = 1;
-            else if (targetId === this.selectedId - COLS) dirY = -1;
+            else if (targetId === this.selectedId + cols) dirY = 1;
+            else if (targetId === this.selectedId - cols) dirY = -1;
 
             this.manager.requestMove(this.id, this.selectedId, dirX, dirY);
             this.selectedId = -1; 

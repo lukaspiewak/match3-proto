@@ -1,15 +1,17 @@
 import { type IBlockAction } from './IBlockAction';
 import type { BoardLogic } from '../BoardLogic';
 import type { ActionManager } from './ActionManager';
-import { COLS, ROWS, CellState } from '../Config';
+import { CellState } from '../Config';
 import { BlockRegistry } from '../BlockDef';
 
 export class ExplosionAction implements IBlockAction {
     constructor(private radius: number) {}
 
     execute(originIdx: number, board: BoardLogic, targetSet: Set<number>, manager: ActionManager): void {
-        const col = originIdx % COLS;
-        const row = Math.floor(originIdx / COLS);
+        const cols = board.cols;
+        const rows = board.rows;
+        const col = originIdx % cols;
+        const row = Math.floor(originIdx / cols);
 
         // Pętla po obszarze wybuchu
         for (let dy = -this.radius; dy <= this.radius; dy++) {
@@ -17,8 +19,8 @@ export class ExplosionAction implements IBlockAction {
                 const nx = col + dx;
                 const ny = row + dy;
 
-                if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
-                    const nIdx = nx + ny * COLS;
+                if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                    const nIdx = nx + ny * cols;
                     const cell = board.cells[nIdx];
 
                     // Warunki walidacji celu

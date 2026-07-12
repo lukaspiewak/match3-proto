@@ -1,12 +1,28 @@
-export const COLS = 7;
-export const ROWS = 9;
-export const TILE_SIZE = 60;
-export const GAP = 4;
-
 export type GameMode = 'SOLO' | 'VS_AI';
 export type LimitMode = 'NONE' | 'MOVES' | 'TIME';
 export type ComboMode = 'TIME' | 'MOVE';
 export type GravityDir = 'DOWN' | 'UP' | 'LEFT' | 'RIGHT';
+
+/**
+ * GameConfig — per-instancja konfiguracja silnika.
+ * Każda BoardLogic dostaje własny obiekt, dzięki czemu można tworzyć
+ * różne warianty gry (inne rozmiary planszy, grawitacja, tryby) obok siebie.
+ */
+export interface GameConfig {
+    cols: number;
+    rows: number;
+    blockTypes: number;
+    gravityDir: GravityDir;
+    gameMode: GameMode;
+    comboMode: ComboMode;
+    limitMode: LimitMode;
+    limitValue: number;
+    seed: number;
+}
+
+// Rozmiar renderu pojedynczego kafla (piksele) — wspólny dla całego UI.
+export const TILE_SIZE = 60;
+export const GAP = 4;
 
 export enum CellState {
     IDLE = 0,
@@ -45,15 +61,26 @@ export const VisualConfig = {
     SHAKE_DURATION: 0.3
 };
 
-export const AppConfig = {
-    gameMode: 'SOLO' as GameMode,
-    limitMode: 'MOVES' as LimitMode,
-    limitValue: 20 as number,
-    comboMode: 'TIME' as ComboMode,
-    seed: 12345 as number,
-    blockTypes: 5 as number,
-    gravityDir: 'DOWN' as GravityDir
+/**
+ * AppConfig — domyślna, globalna instancja GameConfig.
+ * Menu edytuje ten obiekt (ustawienia sesji); nowa gra kopiuje go do
+ * własnego GameConfig przekazywanego do BoardLogic.
+ */
+export const AppConfig: GameConfig = {
+    cols: 7,
+    rows: 9,
+    gameMode: 'SOLO',
+    limitMode: 'MOVES',
+    limitValue: 20,
+    comboMode: 'TIME',
+    seed: 12345,
+    blockTypes: 5,
+    gravityDir: 'DOWN'
 };
+
+// Domyślne wymiary planszy dla layoutu scen (nie dla logiki silnika).
+export const COLS = AppConfig.cols;
+export const ROWS = AppConfig.rows;
 
 export const CurrentTheme = {
     background: 0x1a202c, 

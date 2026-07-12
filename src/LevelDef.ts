@@ -55,6 +55,7 @@ export function createConstructionLevel(def: BuildingDefinition): LevelConfig {
         id: `build_${def.id}_lvl${nextLevel}`,
         name: `Build: ${def.name} Lvl ${nextLevel}`,
         mode: 'CONSTRUCTION',
+        layout: layout,
         moveLimit: 30 + (nextLevel * 5), // Stały limit ruchów na budowę (można balansować)
         timeLimit: 0,
         goals: goals,

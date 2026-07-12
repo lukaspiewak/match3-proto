@@ -1,4 +1,4 @@
-import { CellState, COLS, ROWS, AppConfig, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
+import { CellState, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
 import { BlockRegistry, type SpecialAction } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 
@@ -18,9 +18,9 @@ export class MatchEngine {
     }
 
     public update(dt: number) {
-        if (AppConfig.comboMode === 'TIME' && this.currentCombo > 0) {
+        if (this.board.config.comboMode === 'TIME' && this.currentCombo > 0) {
             const isBoardBusy = !this.board.cells.every(c => c.state === CellState.IDLE);
-            const shouldPause = (AppConfig.gameMode !== 'SOLO' && isBoardBusy);
+            const shouldPause = (this.board.config.gameMode !== 'SOLO' && isBoardBusy);
 
             if (!shouldPause) {
                 this.comboTimer -= dt; 
@@ -35,32 +35,34 @@ export class MatchEngine {
     public scanForMatches() {
         const initialMatches = new Set<number>();
         const cells = this.board.cells;
+        const cols = this.board.cols;
+        const rows = this.board.rows;
 
         // Skanowanie (bez zmian)
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS - 2; c++) {
-                const idx = c + r * COLS;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols - 2; c++) {
+                const idx = c + r * cols;
                 const type = cells[idx].typeId;
                 const def = BlockRegistry.getById(type);
                 if (type === -1 || cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
                 let matchLen = 1;
-                while (c + matchLen < COLS && cells[c + matchLen + r * COLS].typeId === type && cells[c + matchLen + r * COLS].state === CellState.IDLE) matchLen++;
+                while (c + matchLen < cols && cells[c + matchLen + r * cols].typeId === type && cells[c + matchLen + r * cols].state === CellState.IDLE) matchLen++;
                 if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) initialMatches.add((c + k) + r * COLS);
+                    for (let k = 0; k < matchLen; k++) initialMatches.add((c + k) + r * cols);
                     c += matchLen - 1;
                 }
             }
         }
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS - 2; r++) {
-                const idx = c + r * COLS;
+        for (let c = 0; c < cols; c++) {
+            for (let r = 0; r < rows - 2; r++) {
+                const idx = c + r * cols;
                 const type = cells[idx].typeId;
                 const def = BlockRegistry.getById(type);
                 if (type === -1 || cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
                 let matchLen = 1;
-                while (r + matchLen < ROWS && cells[c + (r + matchLen) * COLS].typeId === type && cells[c + (r + matchLen) * COLS].state === CellState.IDLE) matchLen++;
+                while (r + matchLen < rows && cells[c + (r + matchLen) * cols].typeId === type && cells[c + (r + matchLen) * cols].state === CellState.IDLE) matchLen++;
                 if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) initialMatches.add(c + (r + k) * COLS);
+                    for (let k = 0; k < matchLen; k++) initialMatches.add(c + (r + k) * cols);
                     r += matchLen - 1;
                 }
             }
@@ -81,7 +83,7 @@ export class MatchEngine {
             this.updateStats(finalMatches);
 
             this.currentCombo++;
-            if (AppConfig.comboMode === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
+            if (this.board.config.comboMode === 'TIME') this.comboTimer += COMBO_BONUS_SECONDS;
             
             finalMatches.forEach(idx => {
                 const cell = cells[idx];
@@ -115,22 +117,24 @@ export class MatchEngine {
         }
     }
 
-    public checkMatchAt(idx: number): boolean { 
+    public checkMatchAt(idx: number): boolean {
         const cells = this.board.cells;
-        const cell = cells[idx]; 
-        const type = cell.typeId; 
+        const cols = this.board.cols;
+        const rows = this.board.rows;
+        const cell = cells[idx];
+        const type = cell.typeId;
         if (type === -1) return false;
-        
+
         const def = BlockRegistry.getById(type);
         if (!def || !def.isMatchable) return false;
 
-        const col = idx % COLS; const row = Math.floor(idx / COLS);
+        const col = idx % cols; const row = Math.floor(idx / cols);
         let countH = 1, i = 1; while (col-i>=0 && cells[idx-i].typeId===type && cells[idx-i].state===CellState.IDLE) { countH++; i++; }
-        i=1; while (col+i<COLS && cells[idx+i].typeId===type && cells[idx+i].state===CellState.IDLE) { countH++; i++; }
+        i=1; while (col+i<cols && cells[idx+i].typeId===type && cells[idx+i].state===CellState.IDLE) { countH++; i++; }
         if (countH>=3) return true;
         
-        let countV = 1; i=1; while (row-i>=0 && cells[idx-i*COLS].typeId===type && cells[idx-i*COLS].state===CellState.IDLE) { countV++; i++; }
-        i=1; while (row+i<ROWS && cells[idx+i*COLS].typeId===type && cells[idx+i*COLS].state===CellState.IDLE) { countV++; i++; }
+        let countV = 1; i=1; while (row-i>=0 && cells[idx-i*cols].typeId===type && cells[idx-i*cols].state===CellState.IDLE) { countV++; i++; }
+        i=1; while (row+i<rows && cells[idx+i*cols].typeId===type && cells[idx+i*cols].state===CellState.IDLE) { countV++; i++; }
         if (countV>=3) return true; 
         
         return false;
@@ -140,6 +144,8 @@ export class MatchEngine {
         const visited = new Set<number>();
         const indices = Array.from(initialMatches);
         const cells = this.board.cells;
+        const cols = this.board.cols;
+        const rows = this.board.rows;
 
         for (const idx of indices) {
             if (visited.has(idx)) continue;
@@ -152,11 +158,11 @@ export class MatchEngine {
             // Grouping logic (flood fill)
             while (stack.length > 0) {
                 const current = stack.pop()!;
-                const c = current % COLS; const r = Math.floor(current / COLS);
+                const c = current % cols; const r = Math.floor(current / cols);
                 const neighbors = [{c:c+1,r:r}, {c:c-1,r:r}, {c:c,r:r+1}, {c:c,r:r-1}];
                 for (const n of neighbors) {
-                    if (n.c >= 0 && n.c < COLS && n.r >= 0 && n.r < ROWS) {
-                        const nIdx = n.c + n.r * COLS;
+                    if (n.c >= 0 && n.c < cols && n.r >= 0 && n.r < rows) {
+                        const nIdx = n.c + n.r * cols;
                         if (initialMatches.has(nIdx) && !visited.has(nIdx)) {
                             if (cells[nIdx].typeId === typeId) {
                                 visited.add(nIdx); stack.push(nIdx); group.push(nIdx);

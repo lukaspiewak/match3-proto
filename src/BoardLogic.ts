@@ -1,11 +1,9 @@
-// ... (importy bez zmian) ...
 import { EventEmitter } from 'pixi.js';
-import { 
-    COLS, ROWS, CellState, type Cell, 
-    type GravityDir, 
-    AppConfig, VisualConfig
+import {
+    CellState, type Cell,
+    type GravityDir, type GameConfig,
+    AppConfig
 } from './Config';
-import { Random } from './Random';
 import { BlockRegistry, type SpecialAction } from './BlockDef';
 import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
@@ -21,7 +19,7 @@ export interface MoveResult {
 
 export class BoardLogic extends EventEmitter {
     public cells: Cell[];
-    // ... (reszta pól bez zmian) ...
+    public readonly config: GameConfig;
     public statsManager: StatsManager;
     private physics: GridPhysics;
     private matchEngine: MatchEngine;
@@ -29,16 +27,20 @@ export class BoardLogic extends EventEmitter {
     private actionManager: ActionManager;
 
     public needsMatchCheck: boolean = false;
-    public statsEnabled: boolean = false; 
     public onBadMove: (() => void) | null = null;
-    private currentThinkingTime: number = 0; 
+    private currentThinkingTime: number = 0;
 
-    constructor() {
+    // Wymiary planszy pochodzą z konfiguracji instancji, nie z globalnych stałych.
+    public get cols(): number { return this.config.cols; }
+    public get rows(): number { return this.config.rows; }
+
+    constructor(config: GameConfig = AppConfig) {
         super();
+        this.config = config;
         this.cells = [];
         this.statsManager = new StatsManager();
         this.actionManager = new ActionManager();
-        this.physics = new GridPhysics(this.cells);
+        this.physics = new GridPhysics(this.cells, config);
         this.matchEngine = new MatchEngine(this);
         this.hintSystem = new HintSystem(this, this.matchEngine);
         this.physics.onNeedsMatchCheck = () => { this.needsMatchCheck = true; };
@@ -82,9 +84,9 @@ export class BoardLogic extends EventEmitter {
         }
     }
 
-    // --- ZMODYFIKOWANA METODA INIT ---
     public initBoard(levelLayout?: number[][], availableBlockIds?: number[]) {
-        this.setGravity(AppConfig.gravityDir);
+        const { cols, rows } = this;
+        this.setGravity(this.config.gravityDir);
         this.cells.length = 0;
         this.matchEngine.reset();
         this.statsManager.reset();
@@ -97,12 +99,12 @@ export class BoardLogic extends EventEmitter {
         } else {
             // Fallback: wszystkie kolory
             this.physics.allowedBlockIds = [];
-            for(let i=0; i<AppConfig.blockTypes; i++) this.physics.allowedBlockIds.push(i);
+            for(let i=0; i<this.config.blockTypes; i++) this.physics.allowedBlockIds.push(i);
         }
 
-        for (let i = 0; i < COLS * ROWS; i++) {
-            const col = i % COLS;
-            const row = Math.floor(i / COLS);
+        for (let i = 0; i < cols * rows; i++) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
             let chosenType = -1;
 
             // 2. Czy layout wymusza klocek?
@@ -117,7 +119,7 @@ export class BoardLogic extends EventEmitter {
             if (chosenType === -1) {
                 let forbiddenH = -1; let forbiddenV = -1;
                 if (col >= 2) { if (this.cells[i-1].typeId === this.cells[i-2].typeId) forbiddenH = this.cells[i-1].typeId; }
-                if (row >= 2) { if (this.cells[i-COLS].typeId === this.cells[i-(COLS*2)].typeId) forbiddenV = this.cells[i-COLS].typeId; }
+                if (row >= 2) { if (this.cells[i-cols].typeId === this.cells[i-(cols*2)].typeId) forbiddenV = this.cells[i-cols].typeId; }
                 
                 do { 
                     chosenType = BlockRegistry.getRandomBlockIdFromList(this.physics.allowedBlockIds);
@@ -137,16 +139,16 @@ export class BoardLogic extends EventEmitter {
     }
 
     public trySwap(idxA: number, dirX: number, dirY: number): MoveResult {
-        // ... (bez zmian) ...
+        const { cols, rows } = this;
         const result: MoveResult = { success: false, causedMatch: false, maxGroupSize: 0 };
-        this.matchEngine.lastMoveGroupSize = 0; 
-        this.hintSystem.reset(); 
+        this.matchEngine.lastMoveGroupSize = 0;
+        this.hintSystem.reset();
 
-        const col = idxA % COLS; const row = Math.floor(idxA / COLS);
+        const col = idxA % cols; const row = Math.floor(idxA / cols);
         const targetCol = col + dirX; const targetRow = row + dirY;
-        if (targetCol < 0 || targetCol >= COLS || targetRow < 0 || targetRow >= ROWS) return result;
-        
-        const idxB = targetCol + targetRow * COLS;
+        if (targetCol < 0 || targetCol >= cols || targetRow < 0 || targetRow >= rows) return result;
+
+        const idxB = targetCol + targetRow * cols;
         const cellA = this.cells[idxA]; const cellB = this.cells[idxB];
         
         if (cellA.state !== CellState.IDLE || cellB.state !== CellState.IDLE) return result;

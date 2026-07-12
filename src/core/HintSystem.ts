@@ -1,4 +1,4 @@
-import { COLS, ROWS, CellState, AppConfig, VisualConfig } from '../Config';
+import { CellState, VisualConfig } from '../Config';
 import { BlockRegistry } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 import type { MatchEngine } from './MatchEngine';
@@ -46,26 +46,28 @@ export class HintSystem {
 
     public findHint(): number[] | null {
         if (!this.board.cells.every(c => c.state === CellState.IDLE)) return null;
-        
+
         const cells = this.board.cells;
+        const cols = this.board.cols;
+        const rows = this.board.rows;
         for (let idx = 0; idx < cells.length; idx++) {
-            const cell = cells[idx]; 
+            const cell = cells[idx];
             if (cell.typeId === -1) continue;
-            
+
             // Optymalizacja: Pomiń od razu unswappable
             const def = BlockRegistry.getById(cell.typeId);
             if (!def || !def.isSwappable) continue;
 
-            const col = idx % COLS; 
-            const row = Math.floor(idx / COLS);
-            
-            if (col < COLS - 1) { 
-                const rI = idx + 1; 
-                if (cells[rI].typeId !== -1 && this.simulateSwap(idx, rI)) return [idx, rI]; 
+            const col = idx % cols;
+            const row = Math.floor(idx / cols);
+
+            if (col < cols - 1) {
+                const rI = idx + 1;
+                if (cells[rI].typeId !== -1 && this.simulateSwap(idx, rI)) return [idx, rI];
             }
-            if (row < ROWS - 1) { 
-                const dI = idx + COLS; 
-                if (cells[dI].typeId !== -1 && this.simulateSwap(idx, dI)) return [idx, dI]; 
+            if (row < rows - 1) {
+                const dI = idx + cols;
+                if (cells[dI].typeId !== -1 && this.simulateSwap(idx, dI)) return [idx, dI];
             }
         }
         return null;
@@ -101,7 +103,7 @@ export class HintSystem {
             const def = BlockRegistry.getById(originalType);
             if (!def || !def.isSwappable) continue;
 
-            for (let t = 0; t < AppConfig.blockTypes; t++) {
+            for (let t = 0; t < this.board.config.blockTypes; t++) {
                 if (t === originalType) continue; 
                 
                 cells[i].typeId = t;
