@@ -14,6 +14,7 @@ export {
     type GameMode, type LimitMode, type ComboMode, type GravityDir,
     type Cell,
     CellState,
+    EMPTY, VOID,
     AppConfig, VisualConfig,
     TILE_SIZE, GAP, COLS, ROWS,
     TURN_TIME_LIMIT, COMBO_BONUS_SECONDS,

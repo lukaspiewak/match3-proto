@@ -1,6 +1,6 @@
 import { EventEmitter } from 'pixi.js';
 import {
-    CellState, type Cell,
+    CellState, EMPTY, VOID, type Cell,
     type GravityDir, type GameConfig,
     AppConfig
 } from './Config';
@@ -166,7 +166,7 @@ export class BoardLogic extends EventEmitter {
         return iterations;
     }
 
-    public initBoard(levelLayout?: number[][], availableBlockIds?: number[]) {
+    public initBoard(levelLayout?: number[][], availableBlockIds?: number[], spawners?: number[]) {
         const { cols, rows } = this;
         this.setGravity(this.config.gravityDir);
         this.cells.length = 0;
@@ -174,6 +174,9 @@ export class BoardLogic extends EventEmitter {
         this.statsManager.reset();
         this.hintSystem.reset();
         this.currentThinkingTime = 0;
+
+        // Wloty (spawnery). Puste = klasyczne zachowanie (cała krawędź generuje bloki).
+        this.physics.setSpawners(spawners ?? []);
 
         // 1. Konfiguracja fizyki (jakie bloki mają spadać)
         if (availableBlockIds && availableBlockIds.length > 0) {
@@ -187,23 +190,33 @@ export class BoardLogic extends EventEmitter {
         for (let i = 0; i < cols * rows; i++) {
             const col = i % cols;
             const row = Math.floor(i / cols);
-            let chosenType = -1;
+            let chosenType = EMPTY;
 
-            // 2. Czy layout wymusza klocek?
+            // 2. Czy layout wymusza klocek? (EMPTY=-1 → losuj; VOID=-2 → dziura; >=0 → konkretny)
             if (levelLayout && levelLayout[row] && levelLayout[row][col] !== undefined) {
                 const layoutValue = levelLayout[row][col];
-                if (layoutValue !== -1) {
+                if (layoutValue !== EMPTY) {
                     chosenType = layoutValue;
                 }
             }
 
-            // 3. Jeśli nie, losujemy (z puli dozwolonych!)
-            if (chosenType === -1) {
+            // 3. Void = trwała dziura: nie losujemy bloku.
+            if (chosenType === VOID) {
+                this.cells.push({
+                    id: i, typeId: VOID, state: CellState.IDLE,
+                    x: col, y: row, targetX: col, targetY: row,
+                    velocity: 0, timer: 0, hp: 0, maxHp: 0,
+                });
+                continue;
+            }
+
+            // 4. Jeśli nie wymuszono, losujemy (z puli dozwolonych!)
+            if (chosenType === EMPTY) {
                 let forbiddenH = -1; let forbiddenV = -1;
                 if (col >= 2) { if (this.cells[i-1].typeId === this.cells[i-2].typeId) forbiddenH = this.cells[i-1].typeId; }
                 if (row >= 2) { if (this.cells[i-cols].typeId === this.cells[i-(cols*2)].typeId) forbiddenV = this.cells[i-cols].typeId; }
-                
-                do { 
+
+                do {
                     chosenType = BlockRegistry.getRandomBlockIdFromList(this.physics.allowedBlockIds);
                 } while (chosenType === forbiddenH || chosenType === forbiddenV);
             }

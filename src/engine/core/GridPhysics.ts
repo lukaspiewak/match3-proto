@@ -1,4 +1,4 @@
-import { CellState, type Cell, type GravityDir, type GameConfig } from '../Config';
+import { CellState, VOID, type Cell, type GravityDir, type GameConfig } from '../Config';
 import { BlockRegistry } from '../BlockDef';
 
 export class GridPhysics {
@@ -15,6 +15,14 @@ export class GridPhysics {
 
     // NOWOŚĆ: Lista dozwolonych bloków do spawnowania
     public allowedBlockIds: number[] = [];
+
+    // Indeksy komórek-wlotów (spawnerów). Pusty zbiór = domyślnie wlot na każdej
+    // krawędzi (klasyczne zachowanie: cała górna krawędź generuje bloki).
+    private spawners: Set<number> = new Set();
+
+    public setSpawners(indices: number[]) {
+        this.spawners = new Set(indices);
+    }
 
     public onDropDown: ((id: number) => void) | null = null;
     public onNeedsMatchCheck: (() => void) | null = null;
@@ -62,11 +70,14 @@ export class GridPhysics {
                 const idx = col + row * cols;
                 const cell = this.cells[idx];
 
+                // Void = trwała przeszkoda: bloki na niej stają, nie przechodzą przez nią.
+                if (cell.typeId === VOID) { emptySlots = 0; continue; }
+
                 const def = (cell.typeId !== -1) ? BlockRegistry.getById(cell.typeId) : null;
 
-                if (cell.typeId === -1) { 
-                    emptySlots++; 
-                } 
+                if (cell.typeId === -1) {
+                    emptySlots++;
+                }
                 else if (def && !def.hasGravity) {
                     emptySlots = 0;
                 }
@@ -92,7 +103,13 @@ export class GridPhysics {
             }
             
             // 2. Generowanie nowych bloków ("Spawn Train")
-            for (let i = 0; i < emptySlots; i++) {
+            // Wlot dla tej linii to komórka na krawędzi po stronie przeciwnej do grawitacji.
+            const entryCol = isVertical ? p : (this.dirX > 0 ? 0 : cols - 1);
+            const entryRow = isVertical ? (this.dirY > 0 ? 0 : rows - 1) : p;
+            const entryIdx = entryCol + entryRow * cols;
+            const canSpawn = this.spawners.size === 0 || this.spawners.has(entryIdx);
+
+            for (let i = 0; canSpawn && i < emptySlots; i++) {
                 let logicalS;
                 if (this.dirX > 0 || this.dirY > 0) { logicalS = emptySlots - 1 - i; } 
                 else { logicalS = (secondarySize - emptySlots) + i; }
@@ -132,7 +149,7 @@ export class GridPhysics {
     private updateMovement(delta: number) {
         const rows = this.config.rows;
         for (const cell of this.cells) {
-            if (cell.typeId === -1) continue;
+            if (cell.typeId < 0) continue; // pomija puste (-1) i void (-2)
             
             if (cell.state === CellState.FALLING) {
                 cell.velocity += this.GRAVITY_ACCEL * delta;

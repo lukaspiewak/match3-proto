@@ -24,6 +24,15 @@ export interface GameConfig {
 export const TILE_SIZE = 60;
 export const GAP = 4;
 
+/**
+ * Sentinele typeId komórki:
+ *  EMPTY = -1  — chwilowo pusta (podczas kaskady/opadania; zostanie wypełniona).
+ *  VOID  = -2  — TRWALE niegrywalna (dziura/kształt planszy): nigdy nie trzyma bloku,
+ *                blokuje grawitację (bloki na niej stają), nie jest matchowalna ani renderowana.
+ */
+export const EMPTY = -1;
+export const VOID = -2;
+
 export enum CellState {
     IDLE = 0,
     SWAPPING = 1,

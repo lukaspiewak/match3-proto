@@ -3,7 +3,7 @@ import { BoardLogic } from '../engine/BoardLogic';
 import { BlockView } from './BlockView';
 import { ParticleSystem } from '../ParticleSystem';
 import { BlockRegistry } from '../engine/BlockDef';
-import { TILE_SIZE, GAP, CellState, CurrentTheme, VisualConfig } from '../engine/Config';
+import { TILE_SIZE, GAP, CellState, VOID, CurrentTheme, VisualConfig } from '../engine/Config';
 
 export class BoardRenderer extends PIXI.Container {
     private board: BoardLogic;
@@ -18,6 +18,7 @@ export class BoardRenderer extends PIXI.Container {
     
     // Elementy wizualne
     private sprites: BlockView[] = [];
+    private slotGraphics: PIXI.Graphics[] = [];
     private particles: ParticleSystem;
     
     // Stan wizualny wstrząsów
@@ -61,6 +62,7 @@ export class BoardRenderer extends PIXI.Container {
         boardBg.fill({ color: CurrentTheme.panelBg, alpha: 1.0 });
         this.bgContainer.addChild(boardBg);
 
+        this.slotGraphics = [];
         for(let i=0; i<cols * rows; i++) {
             const col = i % cols; const row = Math.floor(i / cols);
             const slot = new PIXI.Graphics();
@@ -68,6 +70,7 @@ export class BoardRenderer extends PIXI.Container {
             slot.fill({ color: CurrentTheme.slotBg, alpha: 1.0 });
             slot.x = col * TILE_SIZE; slot.y = row * TILE_SIZE;
             this.bgContainer.addChild(slot);
+            this.slotGraphics[i] = slot;
         }
 
         // Maska dla klocków (żeby nie wychodziły poza planszę przy wlatywaniu)
@@ -187,13 +190,17 @@ export class BoardRenderer extends PIXI.Container {
     private renderBlocks(selectedId: number) {
         for(let i=0; i < this.board.cells.length; i++) {
             const cell = this.board.cells[i];
-            const sprite = this.sprites[i]; 
+            const sprite = this.sprites[i];
             const drawX = cell.x * TILE_SIZE + (TILE_SIZE - GAP) / 2;
             const drawY = cell.y * TILE_SIZE + (TILE_SIZE - GAP) / 2;
 
-            if (cell.typeId === -1) { 
-                sprite.visible = false; 
-                continue; 
+            // Void = dziura: brak bloku i brak kafla tła (kształt planszy).
+            const slot = this.slotGraphics[i];
+            if (slot) slot.visible = cell.typeId !== VOID;
+
+            if (cell.typeId < 0) { // puste (-1) lub void (-2)
+                sprite.visible = false;
+                continue;
             }
 
             // Animacja wybuchu (zanikanie)

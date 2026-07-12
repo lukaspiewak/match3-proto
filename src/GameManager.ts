@@ -93,7 +93,7 @@ export class GameManager {
         this.startInventory = { ...this.sessionInventory };
 
         console.log(`Loading Level: ${level.id} (${level.mode})`);
-        this.logic.initBoard(level.layout, level.availableBlockIds);
+        this.logic.initBoard(level.layout, level.availableBlockIds, level.spawners);
         this.startTurn();
     }
 

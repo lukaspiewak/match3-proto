@@ -1,10 +1,11 @@
-import { COLS, ROWS } from './engine/Config';
+import { COLS, ROWS, VOID } from './engine/Config';
 import { type BuildingDefinition } from './BuildingDef';
 import { Buildings } from './core/BuildingManager';
 
-export const R_ = -1;  // Random
-export const S_ = 200; // Stone
-export const I_ = 300; // Ice
+export const R_ = -1;    // Random
+export const S_ = 200;   // Stone
+export const I_ = 300;   // Ice
+export const V_ = VOID;  // Void (trwała dziura / kształt planszy)
 
 // Typy Celów
 export type GoalType = 'SCORE' | 'COLLECT';
@@ -29,6 +30,8 @@ export interface LevelConfig {
     availableBlockIds: number[];
     // NOWOŚĆ: ID budynku, który ulepszamy po wygranej (tylko dla CONSTRUCTION)
     targetBuildingId?: string;
+    // Opcjonalne wloty (indeksy komórek-spawnerów). Puste/brak = cała krawędź generuje bloki.
+    spawners?: number[];
 }
 
 // --- GENERATOR POZIOMU BUDOWY ---
@@ -157,4 +160,29 @@ export const LEVEL_4: LevelConfig = {
     ]
 };
 
-export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4];
+// Demo topologii: kształt "pucharu" — dziury w dolnych rogach (V_).
+// Górny rząd w pełni grywalny → wszystkie kolumny się dolewają, brak zamkniętych kieszeni.
+export const LEVEL_5: LevelConfig = {
+    id: "level_5",
+    name: "Level 5: Shaped Board",
+    mode: 'STANDARD',
+    moveLimit: 25,
+    timeLimit: 0,
+    availableBlockIds: [0, 1, 2, 3],
+    goals: [
+        { type: 'SCORE', amount: 2000 }
+    ],
+    layout: [
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [V_, R_, R_, R_, R_, R_, V_],
+        [V_, V_, R_, R_, R_, V_, V_]
+    ]
+};
+
+export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5];
