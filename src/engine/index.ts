@@ -25,7 +25,7 @@ export {
 export { BoardLogic, type MoveResult, type BoardState, type CellSnapshot } from './BoardLogic';
 
 // Definicje bloków (rejestr sterowany danymi)
-export { BlockRegistry, BlockDefinition, type SpecialAction, type BlockTriggers } from './BlockDef';
+export { BlockRegistry, BlockDefinition, DEFAULT_TRIGGERS, type SpecialAction, type BlockTriggers } from './BlockDef';
 
 // Deterministyczny RNG (potrzebny do powtarzalnych plansz / walidacji łamigłówek)
 export { Random } from './Random';

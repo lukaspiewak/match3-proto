@@ -8,6 +8,7 @@ export type SpecialAction =
     | 'LINE_CLEAR_H'
     | 'LINE_CLEAR_V'
     | 'MAGIC_BONUS'
+    | 'CLEAR_COLOR'      // color bomb — usuwa wszystkie bloki tego samego koloru
     | 'CREATE_SPECIAL'
     | 'CREATE_WALL'
     | 'CREATE_ORE'
@@ -24,9 +25,29 @@ export interface BlockTriggers {
     // undefined → użyj onMatch5. Aktywne dla grup >=5 (poza onMatchSquare).
     onMatchL?: SpecialAction;      // zgięcie L  → domyślnie EXPLODE_BIG (wrapped)
     onMatchT?: SpecialAction;      // zgięcie T/+ → domyślnie EXPLODE_BIG (wrapped)
-    onLine5?: SpecialAction;       // prosta linia >=5 (np. color bomb — wymaga własnej akcji)
+    onLine5?: SpecialAction;       // prosta linia >=5 → domyślnie CLEAR_COLOR (color bomb)
     onMatchSquare?: SpecialAction; // kwadrat 2x2 (wymaga reguły produkującej SQUARE)
 }
+
+/**
+ * DEFAULT_TRIGGERS — JEDNO, KONFIGUROWALNE miejsce mapujące UKŁAD dopasowania
+ * (rozmiar + kształt) na EFEKT (akcję specjalną) dla wszystkich bloków.
+ *
+ * Zmiana tutaj wpływa globalnie; pojedynczy blok może nadpisać dowolne pole przez
+ * `customTriggers` w konstruktorze. To domyślna "gramatyka" gatunku match-3:
+ *   3          → brak, 4 → mały wybuch, 5 (prosta) → color bomb,
+ *   L/T (>=5)  → wrapped (duży wybuch).
+ */
+export const DEFAULT_TRIGGERS: BlockTriggers = {
+    onMatch3: 'NONE',
+    onMatch4: 'EXPLODE_SMALL',
+    onMatch5: 'CREATE_SPECIAL',
+    onDropDown: 'NONE',
+    onMatchL: 'EXPLODE_BIG',
+    onMatchT: 'EXPLODE_BIG',
+    onLine5: 'CLEAR_COLOR',
+    // onMatchSquare celowo pominięte (undefined) → fallback do logiki rozmiaru.
+};
 
 export class BlockDefinition {
     public readonly triggers: BlockTriggers;
@@ -48,18 +69,16 @@ export class BlockDefinition {
         public readonly initialHp: number = 1,
         public readonly hasGravity: boolean = true
     ) {
+        // Per-blok nadpisuje globalną konfigurację DEFAULT_TRIGGERS (układ → efekt).
         this.triggers = {
-            onMatch3: customTriggers.onMatch3 || 'NONE',
-            onMatch4: customTriggers.onMatch4 || 'EXPLODE_SMALL',
-            onMatch5: customTriggers.onMatch5 || 'CREATE_SPECIAL',
-            onDropDown: customTriggers.onDropDown || 'NONE',
-            // Domyślnie zgięcia L/T dają wybuch obszarowy (wrapped). Prostą linię i
-            // kwadrat zostawiamy jako fallback do onMatch5 (undefined), by nie zmieniać
-            // zachowania bez świadomej konfiguracji.
-            onMatchL: customTriggers.onMatchL ?? 'EXPLODE_BIG',
-            onMatchT: customTriggers.onMatchT ?? 'EXPLODE_BIG',
-            onLine5: customTriggers.onLine5,
-            onMatchSquare: customTriggers.onMatchSquare,
+            onMatch3: customTriggers.onMatch3 ?? DEFAULT_TRIGGERS.onMatch3,
+            onMatch4: customTriggers.onMatch4 ?? DEFAULT_TRIGGERS.onMatch4,
+            onMatch5: customTriggers.onMatch5 ?? DEFAULT_TRIGGERS.onMatch5,
+            onDropDown: customTriggers.onDropDown ?? DEFAULT_TRIGGERS.onDropDown,
+            onMatchL: customTriggers.onMatchL ?? DEFAULT_TRIGGERS.onMatchL,
+            onMatchT: customTriggers.onMatchT ?? DEFAULT_TRIGGERS.onMatchT,
+            onLine5: customTriggers.onLine5 ?? DEFAULT_TRIGGERS.onLine5,
+            onMatchSquare: customTriggers.onMatchSquare ?? DEFAULT_TRIGGERS.onMatchSquare,
         };
     }
 

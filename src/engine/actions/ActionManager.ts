@@ -7,6 +7,7 @@ import { ExplosionAction } from './ExplosionAction';
 import { LineClearAction } from './LineClearAction';
 import { MagicBonusAction } from './MagicBonusAction';
 import { CreateBlockAction } from './CreateBlockAction'; // NOWOŚĆ
+import { ClearColorAction } from './ClearColorAction';
 
 export class ActionManager {
     private strategies: Map<SpecialAction, IBlockAction> = new Map();
@@ -23,6 +24,7 @@ export class ActionManager {
         this.strategies.set('LINE_CLEAR_V', new LineClearAction('VERTICAL'));
 
         this.strategies.set('MAGIC_BONUS', new MagicBonusAction());
+        this.strategies.set('CLEAR_COLOR', new ClearColorAction());
 
         // --- NOWOŚĆ: Rejestracja akcji tworzenia bloków ---
         // Ujednolicamy CREATE_SPECIAL z innymi
