@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import { BlockRegistry } from './BlockDef';
+import { BlockRegistry } from './engine/BlockDef';
 
 // Klasa pomocnicza: Pojedynczy slot surowca
 class ResourceSlot extends PIXI.Container {

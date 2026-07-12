@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { type BuildingDefinition } from '../BuildingDef';
 import { Buildings } from '../core/BuildingManager';
 import { Resources } from '../core/ResourceManager';
-import { BlockRegistry } from '../BlockDef';
+import { BlockRegistry } from '../engine/BlockDef';
 import { Button } from './Button';
 
 export class UpgradeWindow extends PIXI.Container {

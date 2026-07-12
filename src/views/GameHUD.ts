@@ -1,8 +1,8 @@
 import * as PIXI from 'pixi.js';
 import { ScoreUI } from '../ScoreUI';
 import { Button } from '../ui/Button';
-import { AppConfig } from '../Config';
-import { BlockRegistry } from '../BlockDef';
+import { AppConfig } from '../engine/Config';
+import { BlockRegistry } from '../engine/BlockDef';
 import { Resources } from '../core/ResourceManager';
 import { Buildings } from '../core/BuildingManager';
 import { type LevelGoal } from '../LevelDef';

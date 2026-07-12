@@ -1,4 +1,4 @@
-import { COLS, ROWS } from './Config';
+import { COLS, ROWS } from './engine/Config';
 import { type BuildingDefinition } from './BuildingDef';
 import { Buildings } from './core/BuildingManager';
 

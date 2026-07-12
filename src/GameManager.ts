@@ -1,8 +1,8 @@
-import { BoardLogic } from './BoardLogic';
+import { BoardLogic } from './engine/BoardLogic';
 import { PlayerController } from './PlayerController';
 import {
     TURN_TIME_LIMIT, CellState, AppConfig
-} from './Config';
+} from './engine/Config';
 import { type LevelConfig, type LevelGoal } from './LevelDef'; // Dodano LevelGoal
 import { Resources } from './core/ResourceManager';
 import { Buildings } from './core/BuildingManager';

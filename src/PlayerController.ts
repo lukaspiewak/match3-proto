@@ -1,10 +1,10 @@
 import * as PIXI from 'pixi.js';
-import { BoardLogic } from './BoardLogic';
+import { BoardLogic } from './engine/BoardLogic';
 // ZMIANA: import type dla GameManager aby uniknąć Circular Dependency w runtime
 import type { GameManager } from './GameManager';
-import { TILE_SIZE } from './Config';
+import { TILE_SIZE } from './engine/Config';
 import { SoundManager } from './SoundManager';
-import { MoveFinder } from './ai/MoveFinder';
+import { MoveFinder } from './engine/ai/MoveFinder';
 
 // Abstrakcja Gracza
 export abstract class PlayerController {

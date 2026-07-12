@@ -1,10 +1,10 @@
 import * as PIXI from 'pixi.js';
 import { Button } from '../ui/Button'; 
-import { AppConfig, type GravityDir, CurrentTheme } from '../Config';
+import { AppConfig, type GravityDir, CurrentTheme } from '../engine/Config';
 import { type Scene } from '../SceneManager';
 import { LEVELS, type LevelConfig } from '../LevelDef';
 import { Resources } from '../core/ResourceManager'; 
-import { BlockRegistry } from '../BlockDef'; 
+import { BlockRegistry } from '../engine/BlockDef'; 
 
 export class MenuScene extends PIXI.Container implements Scene {
     private mainContainer: PIXI.Container;

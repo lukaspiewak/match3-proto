@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
-import { TILE_SIZE, GAP } from '../Config';
-import { BlockRegistry } from '../BlockDef';
+import { TILE_SIZE, GAP } from '../engine/Config';
+import { BlockRegistry } from '../engine/BlockDef';
 
 export class BlockView extends PIXI.Container {
     private bg: PIXI.Graphics;

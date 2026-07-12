@@ -3,8 +3,8 @@ import { SceneManager } from './SceneManager';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { CityScene } from './scenes/CityScene'; 
-import { BlockRegistry } from './BlockDef'; 
-import { CurrentTheme } from './Config';
+import { BlockRegistry } from './engine/BlockDef'; 
+import { CurrentTheme } from './engine/Config';
 import { type LevelConfig } from './LevelDef';
 
 const app = new PIXI.Application();

@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { type Scene } from '../SceneManager';
-import { BoardLogic } from '../BoardLogic';
+import { BoardLogic } from '../engine/BoardLogic';
 import { GameManager } from '../GameManager';
 import { SoundManager } from '../SoundManager';
 import { HumanPlayerController, BotPlayerController } from '../PlayerController';
@@ -9,8 +9,8 @@ import { GameHUD, type BarMetric } from '../views/GameHUD';
 import {
     TILE_SIZE,
     PLAYER_ID_1, PLAYER_ID_2, AppConfig
-} from '../Config';
-import { Random } from '../Random';
+} from '../engine/Config';
+import { Random } from '../engine/Random';
 import { type LevelConfig, LEVEL_1 } from '../LevelDef';
 
 export class GameScene extends PIXI.Container implements Scene {

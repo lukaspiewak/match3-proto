@@ -1,9 +1,9 @@
 import * as PIXI from 'pixi.js';
-import { BoardLogic } from '../BoardLogic';
+import { BoardLogic } from '../engine/BoardLogic';
 import { BlockView } from './BlockView';
 import { ParticleSystem } from '../ParticleSystem';
-import { BlockRegistry } from '../BlockDef';
-import { TILE_SIZE, GAP, CellState, CurrentTheme, VisualConfig } from '../Config';
+import { BlockRegistry } from '../engine/BlockDef';
+import { TILE_SIZE, GAP, CellState, CurrentTheme, VisualConfig } from '../engine/Config';
 
 export class BoardRenderer extends PIXI.Container {
     private board: BoardLogic;
