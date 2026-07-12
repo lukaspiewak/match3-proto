@@ -26,6 +26,7 @@ export interface CellSnapshot {
     typeId: number;
     hp: number;
     maxHp: number;
+    countdown?: number; // opcjonalne w wejściu (loadState); getState zawsze wypełnia
 }
 
 /**
@@ -135,6 +136,22 @@ export class BoardLogic extends EventEmitter {
         return !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE);
     }
 
+    /**
+     * Dekrementuje liczniki bomb (raz na ruch). Zwraca indeksy bomb, które właśnie
+     * osiągnęły 0 (do rozstrzygnięcia przez warstwę gry — np. przegrana).
+     */
+    public tickCountdowns(): number[] {
+        const expired: number[] = [];
+        for (const cell of this.cells) {
+            if (cell.countdown > 0 && cell.state === CellState.IDLE) {
+                cell.countdown--;
+                this.emit('bombTick', { id: cell.id, countdown: cell.countdown });
+                if (cell.countdown <= 0) expired.push(cell.id);
+            }
+        }
+        return expired;
+    }
+
     /** Czy na planszy istnieje jakiekolwiek dopasowanie (używa prawdziwej detekcji silnika). */
     public hasAnyMatch(): boolean {
         for (let i = 0; i < this.cells.length; i++) {
@@ -148,7 +165,7 @@ export class BoardLogic extends EventEmitter {
         return {
             cols: this.cols,
             rows: this.rows,
-            cells: this.cells.map(c => ({ typeId: c.typeId, hp: c.hp, maxHp: c.maxHp })),
+            cells: this.cells.map(c => ({ typeId: c.typeId, hp: c.hp, maxHp: c.maxHp, countdown: c.countdown })),
         };
     }
 
@@ -165,7 +182,7 @@ export class BoardLogic extends EventEmitter {
         for (let i = 0; i < this.cells.length; i++) {
             const c = this.cells[i];
             const s = state.cells[i];
-            c.typeId = s.typeId; c.hp = s.hp; c.maxHp = s.maxHp;
+            c.typeId = s.typeId; c.hp = s.hp; c.maxHp = s.maxHp; c.countdown = s.countdown ?? 0;
             c.state = CellState.IDLE;
             const col = i % this.cols; const row = Math.floor(i / this.cols);
             c.x = col; c.y = row; c.targetX = col; c.targetY = row;
@@ -236,7 +253,7 @@ export class BoardLogic extends EventEmitter {
                 this.cells.push({
                     id: i, typeId: VOID, state: CellState.IDLE,
                     x: col, y: row, targetX: col, targetY: row,
-                    velocity: 0, timer: 0, hp: 0, maxHp: 0,
+                    velocity: 0, timer: 0, hp: 0, maxHp: 0, countdown: 0,
                 });
                 continue;
             }
@@ -259,7 +276,8 @@ export class BoardLogic extends EventEmitter {
                 id: i, typeId: chosenType, state: CellState.IDLE,
                 x: col, y: row, targetX: col, targetY: row,
                 velocity: 0, timer: 0,
-                hp: finalHp, maxHp: finalHp
+                hp: finalHp, maxHp: finalHp,
+                countdown: blockDef ? blockDef.initialCountdown : 0
             });
         }
     }

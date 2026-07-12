@@ -61,6 +61,7 @@ export interface Cell {
     state: CellState;
     hp: number;
     maxHp: number;
+    countdown: number; // licznik ruchów bomby (0 = nie bomba)
 
     // --- WIZUALNE (animacja) ---
     x: number;

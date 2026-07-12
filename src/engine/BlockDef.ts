@@ -54,8 +54,21 @@ export const DEFAULT_TRIGGERS: BlockTriggers = {
     // onMatchSquare celowo pominięte (undefined) → fallback do logiki rozmiaru.
 };
 
+/** Dodatkowe właściwości blokerów (CC-style). Opcjonalne — nie psują istniejących bloków. */
+export interface BlockOptions {
+    /** Uszkadzany przez SĄSIEDNI match (frosting/skrzynia/kłódka). hp = liczba warstw. */
+    damagedByAdjacent?: boolean;
+    /** Po zbiciu (hp<=0) odsłania ten blok zamiast znikać (kłódka → klocek). undefined = zniszcz. */
+    revealTypeId?: number;
+    /** Licznik ruchów (bomba). >0 → blok jest bombą; 0 (domyślnie) → zwykły blok. */
+    initialCountdown?: number;
+}
+
 export class BlockDefinition {
     public readonly triggers: BlockTriggers;
+    public readonly damagedByAdjacent: boolean;
+    public readonly revealTypeId: number | undefined;
+    public readonly initialCountdown: number;
 
     constructor(
         public readonly id: number,
@@ -72,8 +85,12 @@ export class BlockDefinition {
         public readonly isSwappable: boolean = true,
         public readonly isMatchable: boolean = true,
         public readonly initialHp: number = 1,
-        public readonly hasGravity: boolean = true
+        public readonly hasGravity: boolean = true,
+        opts: BlockOptions = {}
     ) {
+        this.damagedByAdjacent = opts.damagedByAdjacent ?? false;
+        this.revealTypeId = opts.revealTypeId;
+        this.initialCountdown = opts.initialCountdown ?? 0;
         // Per-blok nadpisuje globalną konfigurację DEFAULT_TRIGGERS (układ → efekt).
         this.triggers = {
             onMatch3: customTriggers.onMatch3 ?? DEFAULT_TRIGGERS.onMatch3,
@@ -161,6 +178,30 @@ export class BlockRegistry {
             {}, false, true, true, 2, true
         );
         this.blocks[300] = iceBlock;
+
+        // --- BLOKERY CC-STYLE (niszczone przez SĄSIEDNI match) ---
+        // Skrzynia: 1 warstwa, nieruchoma, niematchowalna.
+        this.blocks[201] = new BlockDefinition(
+            201, "Crate", 0x8B5A2B, 0x5B3A1B, '📦', 'block_crate', 0, "Skrzynia",
+            {}, false, false, false, 1, false, { damagedByAdjacent: true }
+        );
+        // Frosting: 2 warstwy (2 sąsiednie matche).
+        this.blocks[202] = new BlockDefinition(
+            202, "Frosting", 0xCFE8FF, 0x7FB0E0, '❄️', 'block_frost', 0, "Szron (2 warstwy)",
+            {}, false, false, false, 2, false, { damagedByAdjacent: true }
+        );
+        // Kłódka: po zbiciu odsłania klocek (tu: Food=0), który potem normalnie spada/matchuje.
+        this.blocks[203] = new BlockDefinition(
+            203, "Lock", 0x9AA0A6, 0x5F6368, '🔒', 'block_lock', 0, "Kłódka",
+            {}, false, false, false, 1, false, { damagedByAdjacent: true, revealTypeId: 0 }
+        );
+
+        // --- BOMBA Z LICZNIKIEM ---
+        // Odlicza ruchy; 0 = przegrana. Rozbrajana przez sąsiedni match (damagedByAdjacent).
+        this.blocks[210] = new BlockDefinition(
+            210, "Bomb", 0x2D3436, 0xE74C3C, '💣', 'block_bomb', 0, "Bomba (licznik ruchów)",
+            {}, false, false, false, 1, false, { damagedByAdjacent: true, initialCountdown: 5 }
+        );
     }
 
     public static getById(id: number): BlockDefinition { return this.blocks[id]; }

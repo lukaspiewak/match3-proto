@@ -108,9 +108,11 @@ export class GridPhysics {
                     targetCell.targetY = targetRow;
                     targetCell.hp = cell.hp;
                     targetCell.maxHp = cell.maxHp;
-                    
-                    cell.typeId = -1; 
+                    targetCell.countdown = cell.countdown;
+
+                    cell.typeId = -1;
                     cell.state = CellState.IDLE;
+                    cell.countdown = 0;
                 }
             }
             
@@ -143,6 +145,7 @@ export class GridPhysics {
                 
                 cell.hp = blockDef.initialHp;
                 cell.maxHp = blockDef.initialHp;
+                cell.countdown = blockDef.initialCountdown;
 
                 let spawnX = finalCol;
                 let spawnY = finalRow;

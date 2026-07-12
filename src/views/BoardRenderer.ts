@@ -310,7 +310,7 @@ export class BoardRenderer extends PIXI.Container {
                 sprite.alpha = progress; 
                 
                 // Nawet przy wybuchu aktualizujemy visuals (żeby nie zniknęły nagle kolory)
-                sprite.updateVisuals(cell.typeId, cell.hp, cell.maxHp);
+                sprite.updateVisuals(cell.typeId, cell.hp, cell.maxHp, cell.countdown);
                 continue;
             }
 
@@ -339,7 +339,7 @@ export class BoardRenderer extends PIXI.Container {
             sprite.scale.set(scale); 
             
             // Przekazanie HP do widoku (rysowanie pęknięć)
-            sprite.updateVisuals(cell.typeId, cell.hp, cell.maxHp);
+            sprite.updateVisuals(cell.typeId, cell.hp, cell.maxHp, cell.countdown);
         }
         this.blocksContainer.sortableChildren = true;
     }

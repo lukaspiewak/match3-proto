@@ -221,11 +221,18 @@ export class GameManager {
     private endTurn() {
         if (this.isGameOver) return;
         this.checkWinLossCondition();
-        if (!this.isGameOver) {
-            if (AppConfig.gameMode === 'VS_AI') {
-                this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
-            }
-            this.startTurn();
+        if (this.isGameOver) return;
+
+        // Bomby: 1 tyknięcie na ruch; osiągnięcie 0 = przegrana (chyba że wcześniej wygrana).
+        const expired = this.logic.tickCountdowns();
+        if (expired.length > 0) {
+            this.finishGame("BOMB EXPLODED!", false);
+            return;
         }
+
+        if (AppConfig.gameMode === 'VS_AI') {
+            this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+        }
+        this.startTurn();
     }
 }

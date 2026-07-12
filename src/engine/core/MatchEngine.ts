@@ -90,7 +90,64 @@ export class MatchEngine {
                     });
                 }
             });
+
+            // Blokery CC-style: uszkodzenie sąsiadów dopasowania (frosting/skrzynie/kłódki/bomby).
+            this.applyAdjacentDamage(initialMatches, finalMatches);
         }
+    }
+
+    /**
+     * Uszkadza blokery (damagedByAdjacent) sąsiadujące ortogonalnie z dopasowanymi
+     * komórkami: hp--, a przy hp<=0 albo odsłania klocek (revealTypeId), albo niszczy.
+     * Jedno uszkodzenie na dopasowanie (kaskada = kolejna warstwa).
+     */
+    private applyAdjacentDamage(initialMatches: Set<number>, finalMatches: Set<number>) {
+        const cells = this.board.cells;
+        const cols = this.board.cols, rows = this.board.rows;
+        const hit = new Set<number>();
+
+        initialMatches.forEach(idx => {
+            const c = idx % cols, r = Math.floor(idx / cols);
+            const neighbors: [number, number][] = [[c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]];
+            for (const [nc, nr] of neighbors) {
+                if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+                const nIdx = nc + nr * cols;
+                if (hit.has(nIdx) || finalMatches.has(nIdx)) continue;
+                const cell = cells[nIdx];
+                if (cell.state !== CellState.IDLE) continue;
+                const def = BlockRegistry.getById(cell.typeId);
+                if (def && def.damagedByAdjacent) hit.add(nIdx);
+            }
+        });
+
+        if (hit.size === 0) return;
+
+        hit.forEach(nIdx => {
+            const cell = cells[nIdx];
+            cell.hp--;
+            if (cell.hp > 0) {
+                this.board.emit('damage', { id: cell.id, hp: cell.hp, maxHp: cell.maxHp });
+                return;
+            }
+            const def = BlockRegistry.getById(cell.typeId);
+            if (def && def.revealTypeId !== undefined) {
+                // Kłódka → odsłonięty klocek (może potem spaść/matchować).
+                const revealed = BlockRegistry.getById(def.revealTypeId);
+                cell.typeId = def.revealTypeId;
+                cell.state = CellState.IDLE;
+                cell.hp = revealed ? revealed.initialHp : 1;
+                cell.maxHp = cell.hp;
+                cell.countdown = revealed ? revealed.initialCountdown : 0;
+                this.board.emit('reveal', { id: cell.id, typeId: cell.typeId });
+            } else {
+                // Skrzynia/frosting/rozbrojona bomba → zniszczenie (luka → grawitacja).
+                cell.state = CellState.EXPLODING;
+                cell.timer = VisualConfig.EXPLOSION_DURATION;
+                this.board.emit('explode', { id: cell.id, typeId: cell.typeId, x: cell.x, y: cell.y });
+            }
+        });
+
+        this.board.needsMatchCheck = true;
     }
 
     public checkMatchAt(idx: number): boolean {

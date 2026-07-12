@@ -8,7 +8,7 @@ function mkBoard(grid: number[][]): MatchBoard {
     const rows = grid.length, cols = grid[0].length;
     const cells: Cell[] = [];
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-        cells.push({ id: c + r * cols, typeId: grid[r][c], state: CellState.IDLE, x: c, y: r, targetX: c, targetY: r, velocity: 0, timer: 0, hp: 1, maxHp: 1 });
+        cells.push({ id: c + r * cols, typeId: grid[r][c], state: CellState.IDLE, x: c, y: r, targetX: c, targetY: r, velocity: 0, timer: 0, hp: 1, maxHp: 1, countdown: 0 });
     }
     return { cols, rows, cells };
 }

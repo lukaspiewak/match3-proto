@@ -6,6 +6,10 @@ export const R_ = -1;    // Random
 export const S_ = 200;   // Stone
 export const I_ = 300;   // Ice
 export const V_ = VOID;  // Void (trwała dziura / kształt planszy)
+export const C_ = 201;   // Crate (skrzynia — 1 sąsiedni match)
+export const F_ = 202;   // Frosting (szron — 2 sąsiednie matche)
+export const K_ = 203;   // Lock (kłódka — odsłania klocek)
+export const B_ = 210;   // Bomb (licznik ruchów)
 
 // Typy Celów
 export type GoalType = 'SCORE' | 'COLLECT';
@@ -185,4 +189,30 @@ export const LEVEL_5: LevelConfig = {
     ]
 };
 
-export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5];
+// Demo blokerów CC-style: skrzynie (C_), frosting (F_), kłódka (K_), bomba (B_).
+// Cel: zniszczyć obie skrzynie. Bomba (5 ruchów) dokłada presji — rozbroisz ją
+// sąsiednim matchem albo przegrywasz.
+export const LEVEL_6: LevelConfig = {
+    id: "level_6",
+    name: "Level 6: Blockers",
+    mode: 'STANDARD',
+    moveLimit: 20,
+    timeLimit: 0,
+    availableBlockIds: [0, 1, 2, 3],
+    goals: [
+        { type: 'COLLECT', targetId: C_, amount: 2 }
+    ],
+    layout: [
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, C_, R_, F_, R_, C_, R_],
+        [R_, R_, K_, R_, B_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_]
+    ]
+};
+
+export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6];
