@@ -10,6 +10,7 @@ export type SpecialAction =
     | 'MAGIC_BONUS'
     | 'CLEAR_COLOR'      // color bomb — usuwa wszystkie bloki tego samego koloru
     | 'CREATE_SPECIAL'
+    | 'CREATE_COLORBOMB' // tworzy blok Color Bomb (aktywowany swapem)
     | 'CREATE_WALL'
     | 'CREATE_ORE'
     | 'CREATE_ICE';
@@ -25,8 +26,11 @@ export interface BlockTriggers {
     // undefined → użyj onMatch5. Aktywne dla grup >=5 (poza onMatchSquare).
     onMatchL?: SpecialAction;      // zgięcie L  → domyślnie EXPLODE_BIG (wrapped)
     onMatchT?: SpecialAction;      // zgięcie T/+ → domyślnie EXPLODE_BIG (wrapped)
-    onLine5?: SpecialAction;       // prosta linia >=5 → domyślnie CLEAR_COLOR (color bomb)
+    onLine5?: SpecialAction;       // prosta linia >=5 → domyślnie tworzy Color Bomb
     onMatchSquare?: SpecialAction; // kwadrat 2x2 (wymaga reguły produkującej SQUARE)
+
+    // Efekt AKTYWACJI bloku przez zamianę (swap). Blok z onActivate != 'NONE' to "specjalny".
+    onActivate?: SpecialAction;
 }
 
 /**
@@ -45,7 +49,8 @@ export const DEFAULT_TRIGGERS: BlockTriggers = {
     onDropDown: 'NONE',
     onMatchL: 'EXPLODE_BIG',
     onMatchT: 'EXPLODE_BIG',
-    onLine5: 'CLEAR_COLOR',
+    onLine5: 'CREATE_COLORBOMB', // linia >=5 zostawia blok Color Bomb (swap → CLEAR_COLOR)
+    onActivate: 'NONE',
     // onMatchSquare celowo pominięte (undefined) → fallback do logiki rozmiaru.
 };
 
@@ -79,7 +84,13 @@ export class BlockDefinition {
             onMatchT: customTriggers.onMatchT ?? DEFAULT_TRIGGERS.onMatchT,
             onLine5: customTriggers.onLine5 ?? DEFAULT_TRIGGERS.onLine5,
             onMatchSquare: customTriggers.onMatchSquare ?? DEFAULT_TRIGGERS.onMatchSquare,
+            onActivate: customTriggers.onActivate ?? DEFAULT_TRIGGERS.onActivate,
         };
+    }
+
+    /** Czy blok jest "specjalny" — daje się aktywować zamianą (swapem). */
+    public isSpecial(): boolean {
+        return (this.triggers.onActivate ?? 'NONE') !== 'NONE';
     }
 
     /**
@@ -126,10 +137,18 @@ export class BlockRegistry {
 
         const specialBlock = new BlockDefinition(
             100, "TNT", 0xFFFFFF, 0x000000, '🧨', 'block_special', 0, "TNT",
-            { onMatch3: 'EXPLODE_BIG', onMatch4: 'EXPLODE_BIG', onMatch5: 'EXPLODE_BIG' },
+            { onMatch3: 'EXPLODE_BIG', onMatch4: 'EXPLODE_BIG', onMatch5: 'EXPLODE_BIG', onActivate: 'EXPLODE_BIG' },
             false, true, true, 1, true
         );
         this.blocks[100] = specialBlock;
+
+        // Color Bomb — blok specjalny; aktywacja swapem czyści cały kolor sąsiada.
+        const colorBomb = new BlockDefinition(
+            101, "Color Bomb", 0xFFFFFF, 0x000000, '🌈', 'block_colorbomb', 0, "Color Bomb",
+            { onActivate: 'CLEAR_COLOR' },
+            false, true, false, 1, true
+        );
+        this.blocks[101] = colorBomb;
 
         const wallBlock = new BlockDefinition(
             200, "Wall", 0x718096, 0x2D3748, '🧱', 'block_wall', 0, "Przeszkoda",

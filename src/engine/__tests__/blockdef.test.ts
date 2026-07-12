@@ -4,14 +4,14 @@ import { BlockRegistry, BlockDefinition, DEFAULT_TRIGGERS } from '../BlockDef';
 describe('DEFAULT_TRIGGERS — konfigurowalne mapowanie układ → efekt', () => {
     it('domyślna gramatyka gatunku', () => {
         expect(DEFAULT_TRIGGERS.onMatch4).toBe('EXPLODE_SMALL');
-        expect(DEFAULT_TRIGGERS.onLine5).toBe('CLEAR_COLOR');   // prosta 5 = color bomb
+        expect(DEFAULT_TRIGGERS.onLine5).toBe('CREATE_COLORBOMB'); // prosta 5 zostawia Color Bomb
         expect(DEFAULT_TRIGGERS.onMatchL).toBe('EXPLODE_BIG');  // L = wrapped
         expect(DEFAULT_TRIGGERS.onMatchT).toBe('EXPLODE_BIG');  // T = wrapped
     });
 
     it('nowy blok bez własnych triggerów dziedziczy DEFAULT_TRIGGERS', () => {
         const b = new BlockDefinition(600, 'Plain', 0, 0, '?', 'x');
-        expect(b.resolveAction(5, 'LINE')).toBe('CLEAR_COLOR');
+        expect(b.resolveAction(5, 'LINE')).toBe('CREATE_COLORBOMB');
         expect(b.resolveAction(5, 'L_SHAPE')).toBe('EXPLODE_BIG');
         expect(b.resolveAction(4, 'LINE')).toBe('EXPLODE_SMALL');
     });
@@ -25,9 +25,9 @@ describe('BlockDefinition.resolveAction — wybór wg rozmiaru i kształtu', () 
         expect(food.resolveAction(4, 'LINE')).toBe('EXPLODE_SMALL');
     });
 
-    it('prosta linia >=5 → CLEAR_COLOR (color bomb)', () => {
-        expect(food.resolveAction(5, 'LINE')).toBe('CLEAR_COLOR');
-        expect(food.resolveAction(7, 'LINE')).toBe('CLEAR_COLOR');
+    it('prosta linia >=5 → CREATE_COLORBOMB (zostawia Color Bomb)', () => {
+        expect(food.resolveAction(5, 'LINE')).toBe('CREATE_COLORBOMB');
+        expect(food.resolveAction(7, 'LINE')).toBe('CREATE_COLORBOMB');
     });
 
     it('zgięcia L/T (>=5) → EXPLODE_BIG (wrapped)', () => {

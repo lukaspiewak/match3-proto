@@ -46,6 +46,9 @@ export {
 export { LineMatchRule } from './match/LineMatchRule';
 export { CollapseMatchRule } from './match/CollapseMatchRule';
 
+// Łączenie/aktywacja bloków specjalnych (konfigurowalna tablica combosów)
+export { type SpecialComboTable, DEFAULT_COMBOS, resolveSpecialCombo } from './match/SpecialCombos';
+
 // Reguły / cele poziomu (pluginowalne)
 export { type GoalRule, type GoalProgress, CollectGoal, ScoreGoal } from './rules/GoalRule';
 

@@ -25,7 +25,7 @@ export class LineClearAction implements IBlockAction {
 
     private tryDestroy(idx: number, board: BoardLogic, targetSet: Set<number>) {
         const cell = board.cells[idx];
-        if (cell.typeId !== -1 && !targetSet.has(idx)) {
+        if (cell.typeId >= 0 && !targetSet.has(idx)) { // pomija puste (-1) i void (-2)
             const def = BlockRegistry.getById(cell.typeId);
             if (def && !def.isIndestructible) {
                 targetSet.add(idx);

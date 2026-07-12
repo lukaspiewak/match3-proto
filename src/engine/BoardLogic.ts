@@ -4,7 +4,8 @@ import {
     type GravityDir, type GameConfig,
     AppConfig
 } from './Config';
-import { BlockRegistry, type SpecialAction } from './BlockDef';
+import { BlockRegistry, BlockDefinition, type SpecialAction } from './BlockDef';
+import { resolveSpecialCombo } from './match/SpecialCombos';
 import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';
@@ -264,6 +265,18 @@ export class BoardLogic extends EventEmitter {
         if (AppConfig.comboMode === 'MOVE') this.matchEngine.currentCombo = 0;
         this.matchEngine.lastSwapTargetId = idxB;
 
+        // --- AKTYWACJA / ŁĄCZENIE BLOKÓW SPECJALNYCH ---
+        // Zamiana z udziałem specjalnego jest legalna nawet bez dopasowania kolorów.
+        if (defA.isSpecial() || defB.isSpecial()) {
+            const targetSet = new Set<number>();
+            this.resolveSpecialSwap(idxA, defA, idxB, defB, targetSet);
+            this.matchEngine.detonate(targetSet);
+            this.statsManager.recordMove(true);
+            result.success = true;
+            result.causedMatch = true;
+            return result;
+        }
+
         const tempType = cellA.typeId; cellA.typeId = cellB.typeId; cellB.typeId = tempType;
         const tempX = cellA.x; const tempY = cellA.y;
         cellA.x = cellB.x; cellA.y = cellB.y; cellB.x = tempX; cellB.y = tempY;
@@ -291,6 +304,32 @@ export class BoardLogic extends EventEmitter {
             result.success = false;
         }
         return result;
+    }
+
+    /**
+     * Rozstrzyga efekt zamiany z udziałem bloku(ów) specjalnego, dopisując cele do targetSet.
+     * - dwa specjalne → combo z konfigurowalnej tablicy (fallback: każdy aktywuje własne onActivate),
+     * - specjalny + zwykły → specjalny aktywuje się w miejscu ZWYKŁEGO (kolor/rząd/obszar sąsiada).
+     */
+    private resolveSpecialSwap(idxA: number, defA: BlockDefinition, idxB: number, defB: BlockDefinition, targetSet: Set<number>) {
+        if (defA.isSpecial() && defB.isSpecial()) {
+            const combo = resolveSpecialCombo(defA.id, defB.id);
+            if (combo) {
+                this.runAction(combo, idxA, targetSet);
+                this.runAction(combo, idxB, targetSet);
+            } else {
+                this.runAction(defA.triggers.onActivate ?? 'NONE', idxA, targetSet);
+                this.runAction(defB.triggers.onActivate ?? 'NONE', idxB, targetSet);
+            }
+        } else {
+            const specialDef = defA.isSpecial() ? defA : defB;
+            const specialIdx = defA.isSpecial() ? idxA : idxB;
+            const normalIdx = defA.isSpecial() ? idxB : idxA;
+            // Aktywacja w miejscu zwykłego bloku → CLEAR_COLOR czyści jego kolor,
+            // LINE_CLEAR jego rząd, EXPLODE jego okolicę.
+            this.runAction(specialDef.triggers.onActivate ?? 'NONE', normalIdx, targetSet);
+            targetSet.add(specialIdx);
+        }
     }
 
     public runAction(action: SpecialAction, originIdx: number, targetSet: Set<number>) {

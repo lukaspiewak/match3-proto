@@ -23,8 +23,8 @@ export class ExplosionAction implements IBlockAction {
                     const nIdx = nx + ny * cols;
                     const cell = board.cells[nIdx];
 
-                    // Warunki walidacji celu
-                    if (cell.typeId !== -1 && cell.state !== CellState.FALLING && !targetSet.has(nIdx)) {
+                    // Warunki walidacji celu (typeId >= 0 pomija puste -1 i void -2)
+                    if (cell.typeId >= 0 && cell.state !== CellState.FALLING && !targetSet.has(nIdx)) {
                         
                         // Sprawdzenie niezniszczalności
                         const targetDef = BlockRegistry.getById(cell.typeId);

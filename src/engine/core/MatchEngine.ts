@@ -1,4 +1,4 @@
-import { CellState, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
+import { CellState, VOID, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
 import { BlockRegistry, type SpecialAction } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 import { type MatchRule, type MatchGroup } from '../match/MatchRule';
@@ -95,6 +95,26 @@ export class MatchEngine {
 
     public checkMatchAt(idx: number): boolean {
         return this.matchRule.hasMatchAt(this.board, idx);
+    }
+
+    /**
+     * Natychmiast wysadza wskazane komórki (instakill) i zgłasza to jako zdarzenia.
+     * Reużywane przez aktywację/łączenie bloków specjalnych (poza pętlą dopasowań).
+     * Pomija void i puste. Ustawia needsMatchCheck, by grawitacja/kaskady ruszyły.
+     */
+    public detonate(targetSet: Set<number>) {
+        const cells = this.board.cells;
+        targetSet.forEach(idx => {
+            const cell = cells[idx];
+            if (cell.typeId === VOID || cell.typeId === -1) return;
+            cell.hp = 0;
+            if (cell.state !== CellState.EXPLODING) {
+                cell.state = CellState.EXPLODING;
+                cell.timer = VisualConfig.EXPLOSION_DURATION;
+                this.board.emit('explode', { id: cell.id, typeId: cell.typeId, x: cell.x, y: cell.y });
+            }
+        });
+        if (targetSet.size > 0) this.board.needsMatchCheck = true;
     }
 
     /**
