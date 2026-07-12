@@ -7,6 +7,7 @@ import {
 import { BlockRegistry, BlockDefinition, type SpecialAction } from './BlockDef';
 import { resolveSpecialCombo } from './match/SpecialCombos';
 import { type BlockSource, SeededColumnSource } from './spawn/BlockSource';
+import { RNG } from './Random';
 import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';
@@ -53,6 +54,17 @@ export class BoardLogic extends EventEmitter {
     public onBadMove: (() => void) | null = null;
     private currentThinkingTime: number = 0;
     private blockSource: BlockSource | null = null;
+
+    // Deterministyczne strumienie ewolucji planszy (z config.seed) — niezależne od
+    // globalnego RNG (AI/hint), dzięki czemu przebieg jest w pełni powtarzalny (replay).
+    private fillRng = new RNG();      // początkowe wypełnienie planszy
+    private effectRng = new RNG();    // losowość akcji (np. wybór rudy w CreateBlockAction)
+
+    /** Kolejna deterministyczna liczba dla efektów akcji (0..1). */
+    public nextEffectRandom(): number { return this.effectRng.next(); }
+
+    /** Hook nagrywania: wywoływany po KAŻDYM udanym ruchu (do replaya). */
+    public onMoveApplied: ((move: { idxA: number; dirX: number; dirY: number }) => void) | null = null;
 
     /**
      * Podgląd n kolejnych bloków, które wpadną w danym torze (kolumnie dla grawitacji
@@ -179,6 +191,9 @@ export class BoardLogic extends EventEmitter {
 
     public initBoard(levelLayout?: number[][], availableBlockIds?: number[], spawners?: number[]) {
         const { cols, rows } = this;
+        // Reseed deterministycznych strumieni planszy (powtarzalność / replay).
+        this.fillRng.setSeed(this.config.seed);
+        this.effectRng.setSeed(((this.config.seed * 2654435761) + 12345) >>> 0 || 1);
         this.setGravity(this.config.gravityDir);
         this.cells.length = 0;
         this.matchEngine.reset();
@@ -233,7 +248,7 @@ export class BoardLogic extends EventEmitter {
                 if (row >= 2) { if (this.cells[i-cols].typeId === this.cells[i-(cols*2)].typeId) forbiddenV = this.cells[i-cols].typeId; }
 
                 do {
-                    chosenType = BlockRegistry.getRandomBlockIdFromList(this.physics.allowedBlockIds);
+                    chosenType = BlockRegistry.getRandomBlockIdFromList(this.physics.allowedBlockIds, () => this.fillRng.next());
                 } while (chosenType === forbiddenH || chosenType === forbiddenV);
             }
 
@@ -289,6 +304,7 @@ export class BoardLogic extends EventEmitter {
             this.statsManager.recordMove(true);
             result.success = true;
             result.causedMatch = true;
+            this.onMoveApplied?.({ idxA, dirX, dirY });
             return result;
         }
 
@@ -308,6 +324,7 @@ export class BoardLogic extends EventEmitter {
             cellB.state = CellState.SWAPPING;
             result.success = true;
             result.causedMatch = true;
+            this.onMoveApplied?.({ idxA, dirX, dirY });
         } else {
             this.statsManager.recordMove(false);
             cellB.typeId = cellA.typeId; cellA.typeId = tempType;

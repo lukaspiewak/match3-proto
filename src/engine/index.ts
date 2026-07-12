@@ -34,6 +34,9 @@ export { Random, RNG } from './Random';
 // Peekowalne źródło spawnu (podgląd kolejnych bloków; wymienne dla łamigłówek)
 export { type BlockSource, SeededColumnSource } from './spawn/BlockSource';
 
+// Replay — deterministyczne nagrywanie i odtwarzanie rozgrywki
+export { type Replay, type ReplayMove, ReplayRecorder, playReplay } from './replay/Replay';
+
 // AI: wyszukiwarka najlepszego ruchu (generyczna, headless)
 export { MoveFinder, type BestMove } from './ai/MoveFinder';
 
