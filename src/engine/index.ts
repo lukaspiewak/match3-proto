@@ -37,6 +37,14 @@ export { MoveFinder, type BestMove } from './ai/MoveFinder';
 export { ActionManager } from './actions/ActionManager';
 export { type IBlockAction } from './actions/IBlockAction';
 
+// Mechanika dopasowania (wymienna — match-3 / collapse / ...)
+export {
+    type MatchRule, type MatchBoard, type MatchGroup, type MatchShape,
+    floodFill, classifyShape,
+} from './match/MatchRule';
+export { LineMatchRule } from './match/LineMatchRule';
+export { CollapseMatchRule } from './match/CollapseMatchRule';
+
 // Reguły / cele poziomu (pluginowalne)
 export { type GoalRule, type GoalProgress, CollectGoal, ScoreGoal } from './rules/GoalRule';
 

@@ -1,20 +1,24 @@
 import { CellState, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
 import { BlockRegistry, type SpecialAction } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
+import { type MatchRule, type MatchGroup } from '../match/MatchRule';
+import { LineMatchRule } from '../match/LineMatchRule';
 
 export class MatchEngine {
     private board: BoardLogic;
-    
+    private matchRule: MatchRule;
+
     public currentCombo: number = 0;
     public bestCombo: number = 0;
     public comboTimer: number = 0;
-    
+
     public currentCascadeDepth: number = 0;
     public lastMoveGroupSize: number = 0;
     public lastSwapTargetId: number = -1;
 
-    constructor(board: BoardLogic) {
+    constructor(board: BoardLogic, matchRule: MatchRule = new LineMatchRule()) {
         this.board = board;
+        this.matchRule = matchRule;
     }
 
     public update(dt: number) {
@@ -33,45 +37,17 @@ export class MatchEngine {
     }
 
     public scanForMatches() {
-        const initialMatches = new Set<number>();
         const cells = this.board.cells;
-        const cols = this.board.cols;
-        const rows = this.board.rows;
 
-        // Skanowanie (bez zmian)
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols - 2; c++) {
-                const idx = c + r * cols;
-                const type = cells[idx].typeId;
-                const def = BlockRegistry.getById(type);
-                if (type === -1 || cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
-                let matchLen = 1;
-                while (c + matchLen < cols && cells[c + matchLen + r * cols].typeId === type && cells[c + matchLen + r * cols].state === CellState.IDLE) matchLen++;
-                if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) initialMatches.add((c + k) + r * cols);
-                    c += matchLen - 1;
-                }
-            }
-        }
-        for (let c = 0; c < cols; c++) {
-            for (let r = 0; r < rows - 2; r++) {
-                const idx = c + r * cols;
-                const type = cells[idx].typeId;
-                const def = BlockRegistry.getById(type);
-                if (type === -1 || cells[idx].state !== CellState.IDLE || !def || !def.isMatchable) continue;
-                let matchLen = 1;
-                while (r + matchLen < rows && cells[c + (r + matchLen) * cols].typeId === type && cells[c + (r + matchLen) * cols].state === CellState.IDLE) matchLen++;
-                if (matchLen >= 3) {
-                    for (let k = 0; k < matchLen; k++) initialMatches.add(c + (r + k) * cols);
-                    r += matchLen - 1;
-                }
-            }
-        }
-        
-        if (initialMatches.size > 0) {
+        // DETEKCJA delegowana do wymiennej reguły dopasowania.
+        const groups = this.matchRule.findMatches(this.board);
+
+        if (groups.length > 0) {
+            const initialMatches = new Set<number>();
+            for (const g of groups) for (const idx of g.cells) initialMatches.add(idx);
             const finalMatches = new Set(initialMatches);
-            
-            this.processMatchEffects(initialMatches, finalMatches);
+
+            this.applyGroupActions(groups, finalMatches);
 
             this.currentCascadeDepth++;
             this.board.statsManager.recordCascade(this.currentCascadeDepth);
@@ -118,62 +94,17 @@ export class MatchEngine {
     }
 
     public checkMatchAt(idx: number): boolean {
-        const cells = this.board.cells;
-        const cols = this.board.cols;
-        const rows = this.board.rows;
-        const cell = cells[idx];
-        const type = cell.typeId;
-        if (type === -1) return false;
-
-        const def = BlockRegistry.getById(type);
-        if (!def || !def.isMatchable) return false;
-
-        const col = idx % cols; const row = Math.floor(idx / cols);
-        let countH = 1, i = 1; while (col-i>=0 && cells[idx-i].typeId===type && cells[idx-i].state===CellState.IDLE) { countH++; i++; }
-        i=1; while (col+i<cols && cells[idx+i].typeId===type && cells[idx+i].state===CellState.IDLE) { countH++; i++; }
-        if (countH>=3) return true;
-        
-        let countV = 1; i=1; while (row-i>=0 && cells[idx-i*cols].typeId===type && cells[idx-i*cols].state===CellState.IDLE) { countV++; i++; }
-        i=1; while (row+i<rows && cells[idx+i*cols].typeId===type && cells[idx+i*cols].state===CellState.IDLE) { countV++; i++; }
-        if (countV>=3) return true; 
-        
-        return false;
+        return this.matchRule.hasMatchAt(this.board, idx);
     }
 
-    private processMatchEffects(initialMatches: Set<number>, finalMatches: Set<number>) {
-        const visited = new Set<number>();
-        const indices = Array.from(initialMatches);
-        const cells = this.board.cells;
-        const cols = this.board.cols;
-        const rows = this.board.rows;
-
-        for (const idx of indices) {
-            if (visited.has(idx)) continue;
-            
-            const typeId = cells[idx].typeId;
-            const group = [idx];
-            const stack = [idx];
-            visited.add(idx);
-
-            // Grouping logic (flood fill)
-            while (stack.length > 0) {
-                const current = stack.pop()!;
-                const c = current % cols; const r = Math.floor(current / cols);
-                const neighbors = [{c:c+1,r:r}, {c:c-1,r:r}, {c:c,r:r+1}, {c:c,r:r-1}];
-                for (const n of neighbors) {
-                    if (n.c >= 0 && n.c < cols && n.r >= 0 && n.r < rows) {
-                        const nIdx = n.c + n.r * cols;
-                        if (initialMatches.has(nIdx) && !visited.has(nIdx)) {
-                            if (cells[nIdx].typeId === typeId) {
-                                visited.add(nIdx); stack.push(nIdx); group.push(nIdx);
-                            }
-                        }
-                    }
-                }
-            }
-
-            const size = group.length;
-            const blockDef = BlockRegistry.getById(typeId);
+    /**
+     * Aplikuje akcje specjalne dla wykrytych grup. Grupy dostarcza MatchRule
+     * (już scalone) — silnik nie zna sposobu ich wykrycia, tylko efekty.
+     */
+    private applyGroupActions(groups: MatchGroup[], finalMatches: Set<number>) {
+        for (const group of groups) {
+            const size = group.size;
+            const blockDef = BlockRegistry.getById(group.typeId);
             if (!blockDef) continue;
 
             let action: SpecialAction = 'NONE';
@@ -182,29 +113,20 @@ export class MatchEngine {
             else if (size === 3) action = blockDef.triggers.onMatch3;
 
             if (action !== 'NONE') {
-                // --- ZMIANA: Obsługa akcji tworzenia (CREATE_*) ---
                 if (action.startsWith('CREATE_')) {
-                    // Akcje tworzenia (CREATE_SPECIAL, CREATE_WALL itp.) uruchamiamy TYLKO RAZ dla grupy.
-                    // Wybieramy najlepsze miejsce (tam gdzie gracz ruszył).
-                    
-                    let targetIdx = group[0];
-                    if (this.lastSwapTargetId !== -1 && group.includes(this.lastSwapTargetId)) {
+                    // Akcje tworzenia uruchamiamy raz dla grupy, w miejscu ruchu gracza jeśli możliwe.
+                    let targetIdx = group.cells[0];
+                    if (this.lastSwapTargetId !== -1 && group.cells.includes(this.lastSwapTargetId)) {
                         targetIdx = this.lastSwapTargetId;
                     }
-                    
-                    // Uruchamiamy akcję przez ActionManager
-                    // ActionManager z nowym CreateBlockAction zajmie się resztą (usuwaniem z finalMatches)
                     this.board.runAction(action, targetIdx, finalMatches);
-                    
                 } else {
-                    // Inne akcje (np. EXPLODE) uruchamiamy dla każdego klocka w grupie
-                    group.forEach(gIdx => this.board.runAction(action, gIdx, finalMatches));
+                    // Inne akcje (np. EXPLODE) uruchamiamy dla każdego klocka w grupie.
+                    group.cells.forEach(gIdx => this.board.runAction(action, gIdx, finalMatches));
                 }
             }
         }
     }
-
-    // USUNIĘTO createSpecialBlock - teraz to robi CreateBlockAction w ActionManagerze
 
     private updateStats(finalMatches: Set<number>) {
         let groupSize = finalMatches.size; 

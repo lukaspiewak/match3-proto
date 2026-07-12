@@ -10,6 +10,7 @@ import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';
 import { ActionManager } from './actions/ActionManager';
 import { StatsManager } from './core/StatsManager';
+import { type MatchRule } from './match/MatchRule';
 
 export interface MoveResult {
     success: boolean;
@@ -54,14 +55,14 @@ export class BoardLogic extends EventEmitter {
     public get cols(): number { return this.config.cols; }
     public get rows(): number { return this.config.rows; }
 
-    constructor(config: GameConfig = AppConfig) {
+    constructor(config: GameConfig = AppConfig, matchRule?: MatchRule) {
         super();
         this.config = config;
         this.cells = [];
         this.statsManager = new StatsManager();
         this.actionManager = new ActionManager();
         this.physics = new GridPhysics(this.cells, config);
-        this.matchEngine = new MatchEngine(this);
+        this.matchEngine = new MatchEngine(this, matchRule);
         this.hintSystem = new HintSystem(this, this.matchEngine);
         this.physics.onNeedsMatchCheck = () => { this.needsMatchCheck = true; };
         this.physics.onDropDown = (id) => {
