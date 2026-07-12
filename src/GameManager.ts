@@ -4,7 +4,10 @@ import {
     TURN_TIME_LIMIT, CellState, AppConfig
 } from './engine/Config';
 import { type GoalRule, CollectGoal, ScoreGoal } from './engine/rules/GoalRule';
+import { type ReplayMove } from './engine/replay/Replay';
 import { type LevelConfig, type LevelGoal } from './LevelDef';
+
+const REPLAY_MOVE_DELAY = 0.45; // s przerwy między ruchami w odtwarzaniu
 import { type EconomyMode, type Inventory, resolveEconomyMode } from './economy/EconomyMode';
 
 /** Buduje pluginowalne cele z deklaratywnej konfiguracji poziomu. */
@@ -44,6 +47,40 @@ export class GameManager {
 
     public onGameFinished: ((reason: string, win: boolean) => void) | null = null;
     public onDeadlockFixed: ((id: number, type: number) => void) | null = null;
+
+    // --- ODTWARZANIE (replay) ---
+    private replayMoves: ReplayMove[] | null = null;
+    private replayIndex = 0;
+    private replayTimer = 0;
+    public onReplayFinished: (() => void) | null = null;
+    public get isReplaying(): boolean { return this.replayMoves !== null; }
+
+    /** Startuje poziom w trybie odtwarzania: silnik sam podaje nagrane ruchy. */
+    public startReplay(level: LevelConfig, moves: ReplayMove[]) {
+        this.startLevel(level);
+        this.replayMoves = moves;
+        this.replayIndex = 0;
+        this.replayTimer = REPLAY_MOVE_DELAY;
+    }
+
+    private driveReplay(dt: number) {
+        if (!this.replayMoves) return;
+        const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
+        if (!boardIdle || this.isProcessingTurn || this.isGameOver) return;
+
+        this.replayTimer -= dt;
+        if (this.replayTimer > 0) return;
+
+        if (this.replayIndex >= this.replayMoves.length) {
+            this.replayMoves = null;
+            if (this.onReplayFinished) this.onReplayFinished();
+            return;
+        }
+        const m = this.replayMoves[this.replayIndex++];
+        const res = this.logic.trySwap(m.idxA, m.dirX, m.dirY);
+        if (res.success && this.currentLevel && this.currentLevel.moveLimit > 0) this.movesLeft--;
+        this.replayTimer = REPLAY_MOVE_DELAY;
+    }
 
     constructor(logic: BoardLogic) {
         this.logic = logic;
@@ -135,11 +172,14 @@ export class GameManager {
              if (this.turnTimer <= 0) this.endTurn();
         }
 
+        // Tryb odtwarzania: silnik sam podaje kolejne ruchy (input gracza zablokowany).
+        if (this.replayMoves) { this.driveReplay(dt); return; }
+
         if (this.players[this.currentPlayerIndex]) this.players[this.currentPlayerIndex].update(delta);
     }
 
     public isMyTurn(playerId: number): boolean {
-        if (this.isGameOver) return false;
+        if (this.isGameOver || this.isReplaying) return false;
         if (AppConfig.gameMode === 'SOLO') {
              const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
              return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
@@ -215,7 +255,7 @@ export class GameManager {
             }
         }
         this.turnTimer = TURN_TIME_LIMIT;
-        currentPlayer.onTurnStart();
+        if (currentPlayer) currentPlayer.onTurnStart();
     }
 
     private endTurn() {

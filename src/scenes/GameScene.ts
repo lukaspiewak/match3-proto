@@ -11,6 +11,7 @@ import {
     PLAYER_ID_1, PLAYER_ID_2, AppConfig
 } from '../engine/Config';
 import { Random } from '../engine/Random';
+import { ReplayRecorder, type ReplayMove } from '../engine/replay/Replay';
 import { type LevelConfig, LEVEL_1 } from '../LevelDef';
 
 export class GameScene extends PIXI.Container implements Scene {
@@ -24,6 +25,12 @@ export class GameScene extends PIXI.Container implements Scene {
     
     private backToMenuCallback: () => void;
     private pendingLevelConfig: LevelConfig | null = null;
+
+    // Replay: nagrywanie bieżącej rozgrywki + tryb odtwarzania.
+    private recorder: ReplayRecorder | null = null;
+    private lastMoves: ReplayMove[] | null = null;
+    private lastLevel: LevelConfig | null = null;
+    private replayMode: boolean = false;
 
     // Wymiary planszy w pikselach — pochodne z konfiguracji aktywnej instancji logiki.
     private get BOARD_LOGICAL_WIDTH() { return this.logic.cols * TILE_SIZE; }
@@ -54,10 +61,13 @@ export class GameScene extends PIXI.Container implements Scene {
 
         this.gameManager = new GameManager(this.logic);
         this.gameManager.onGameFinished = (reason, win) => this.onGameFinished(reason, win);
+        // Fallback: replay poziomu bez warunku końca (zwykle replay kończy się przez onGameFinished).
+        this.gameManager.onReplayFinished = () => this.backToMenuCallback();
     }
 
     public setCurrentLevel(level: LevelConfig) {
         this.pendingLevelConfig = level;
+        this.replayMode = false; // nowa gra z menu = nie replay
     }
 
     public onShow() {
@@ -79,7 +89,18 @@ export class GameScene extends PIXI.Container implements Scene {
         }
 
         this.renderer.initVisuals();
-        this.gameManager.startLevel(levelToLoad); 
+
+        if (this.replayMode && this.lastMoves && this.lastLevel) {
+            // Tryb odtwarzania: nie nagrywaj, podawaj nagrane ruchy.
+            this.logic.onMoveApplied = null;
+            this.recorder = null;
+            this.gameManager.startReplay(this.lastLevel, this.lastMoves);
+        } else {
+            // Normalna gra: nagrywaj ruchy do ewentualnego replaya.
+            this.recorder = new ReplayRecorder().attach(this.logic);
+            this.lastLevel = levelToLoad;
+            this.gameManager.startLevel(levelToLoad);
+        }
 
         const mode = this.gameManager.currentLevelMode;
 
@@ -216,35 +237,71 @@ export class GameScene extends PIXI.Container implements Scene {
     }
 
     private onGameFinished(reason: string, win: boolean) {
+        // Zapamiętaj nagranie zakończonej rozgrywki (o ile nie było to odtwarzanie).
+        if (!this.replayMode && this.recorder) {
+            this.lastMoves = [...this.recorder.moves];
+        }
+
         const width = this.app.screen.width;
         const height = this.app.screen.height;
 
         const overlay = new PIXI.Graphics();
         overlay.rect(0, 0, width, height);
         overlay.fill({ color: 0x000000, alpha: 0.85 });
-        this.addChild(overlay); 
-        
+        this.addChild(overlay);
+
         const color = win ? 0x00FF00 : 0xFF0000;
         const title = win ? "VICTORY!" : "GAME OVER";
         const isGathering = this.gameManager.currentLevelMode === 'GATHERING';
         const displayTitle = isGathering ? "EXPEDITION ENDED" : title;
         const displayColor = isGathering ? 0xD97706 : color;
 
-        const text = new PIXI.Text({ 
-            text: `${displayTitle}\n${reason}\n\nClick to Menu`, 
+        const text = new PIXI.Text({
+            text: `${displayTitle}\n${reason}\n\nClick to Menu`,
             style: { fill: displayColor, fontSize: 36, fontWeight: 'bold', align: 'center', stroke: { color: 0xFFFFFF, width: 4 } }
         });
         text.anchor.set(0.5);
         text.x = width / 2; text.y = height / 2;
         this.addChild(text);
 
+        let replayBtn: PIXI.Text | null = null;
+
         text.eventMode = 'static';
         text.cursor = 'pointer';
         text.on('pointerdown', () => {
             this.removeChild(overlay);
             this.removeChild(text);
+            if (replayBtn) this.removeChild(replayBtn);
             this.backToMenuCallback();
         });
+
+        // Przycisk odtworzenia (jeśli mamy nagranie).
+        if (this.lastMoves && this.lastMoves.length > 0) {
+            replayBtn = new PIXI.Text({
+                text: "▶ WATCH REPLAY",
+                style: { fill: 0xFFFFFF, fontSize: 22, fontWeight: 'bold', align: 'center', stroke: { color: 0x000000, width: 3 } }
+            });
+            replayBtn.anchor.set(0.5);
+            replayBtn.x = width / 2; replayBtn.y = height / 2 + 90;
+            replayBtn.eventMode = 'static';
+            replayBtn.cursor = 'pointer';
+            replayBtn.on('pointerdown', (e) => {
+                e.stopPropagation();
+                this.removeChild(overlay);
+                this.removeChild(text);
+                if (replayBtn) this.removeChild(replayBtn);
+                this.watchLastReplay();
+            });
+            this.addChild(replayBtn);
+        }
+    }
+
+    /** Odtwarza ostatnią rozgrywkę (animowanie w żywym rendererze). */
+    public watchLastReplay() {
+        if (!this.lastMoves || !this.lastLevel) return;
+        this.replayMode = true;
+        this.pendingLevelConfig = this.lastLevel;
+        this.onShow(); // ponowna inicjalizacja — wykryje replayMode i uruchomi startReplay
     }
 
     public resize(width: number, height: number) {
