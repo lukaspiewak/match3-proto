@@ -62,6 +62,17 @@ describe('Podgląd wpięty w BoardLogic', () => {
         expect(b.cells[0].typeId).toBe(preview[1]); // góra = drugi
     });
 
+    it('podgląd przewiduje spawny także przy odwrotnej grawitacji (UP)', () => {
+        const up: GameConfig = { ...cfg(1, 2, 77), gravityDir: 'UP' };
+        const b = new BoardLogic(up);
+        const preview = b.getColumnPreview(0, 2);
+        b.cells[0].typeId = EMPTY; b.cells[0].state = CellState.IDLE;
+        b.cells[1].typeId = EMPTY; b.cells[1].state = CellState.IDLE;
+        b.resolveInstant();
+        const got = [b.cells[0].typeId, b.cells[1].typeId].sort((x, y) => x - y);
+        expect(got).toEqual([...preview].sort((x, y) => x - y)); // te same bloki wpadły
+    });
+
     it('domyślnie wyłączony brak crashu (getColumnPreview zawsze bezpieczne)', () => {
         const b = new BoardLogic(cfg(5, 5, 1));
         expect(() => b.getColumnPreview(0, 0)).not.toThrow();

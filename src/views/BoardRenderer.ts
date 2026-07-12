@@ -159,52 +159,81 @@ export class BoardRenderer extends PIXI.Container {
         this.updatePreview();
     }
 
-    /** Rysuje minimalistyczny podgląd N kolejnych bloków nad każdą kolumną (grawitacja DOWN). */
+    /**
+     * Rysuje minimalistyczny podgląd N kolejnych bloków przy KRAWĘDZI WLOTU
+     * (przeciwnej do grawitacji): DOWN→góra, UP→dół, RIGHT→lewa, LEFT→prawa.
+     * Tor = kolumna (grawitacja pionowa) lub rząd (pozioma) — spójnie z silnikiem.
+     */
     private updatePreview() {
         const n = this.board.config.previewCount ?? 0;
-        const enabled = n > 0 && this.board.config.gravityDir === 'DOWN';
-        if (!enabled) { this.previewContainer.visible = false; return; }
+        if (n <= 0) { this.previewContainer.visible = false; return; }
         this.previewContainer.visible = true;
 
-        const cols = this.board.cols;
+        const cols = this.board.cols, rows = this.board.rows;
         const style = this.board.config.previewStyle ?? 'bars';
-        const innerW = TILE_SIZE - GAP;
+        const dir = this.board.config.gravityDir;
+        const inner = TILE_SIZE - GAP;
+        const boardW = cols * TILE_SIZE, boardH = rows * TILE_SIZE;
 
-        // Przebudowa puli tylko przy zmianie stylu/liczby (geometria stała między klatkami).
-        const signature = `${style}|${n}|${cols}`;
+        const isVertical = dir === 'DOWN' || dir === 'UP';
+        const lanes = isVertical ? cols : rows;
+        // Baza krawędzi wlotu i znak "na zewnątrz" (poza planszę).
+        const sign = (dir === 'DOWN' || dir === 'RIGHT') ? -1 : 1;
+        const base = dir === 'UP' ? boardH : dir === 'LEFT' ? boardW : 0;
+
+        // Pozycja kafla toru L, slotu j (j=0 = następny, najbliżej planszy).
+        const place = (tile: PIXI.Graphics, L: number, j: number) => {
+            const alongCenter = L * TILE_SIZE + inner / 2; // środek toru wzdłuż krawędzi
+            if (style === 'bars') {
+                const step = 7 + 3;               // grubość paska + odstęp
+                const d = base + sign * (j + 1) * step;
+                if (isVertical) { tile.x = alongCenter; tile.y = d; }
+                else { tile.x = d; tile.y = alongCenter; }
+            } else {
+                const gap = 3;
+                const dot = Math.min((inner - (n - 1) * gap) / n, inner * 0.5);
+                const totalAlong = n * dot + (n - 1) * gap;
+                const along = alongCenter - totalAlong / 2 + dot / 2 + j * (dot + gap);
+                const out = base + sign * (dot / 2 + 4);
+                if (isVertical) { tile.x = along; tile.y = out; }
+                else { tile.x = out; tile.y = along; }
+            }
+        };
+
+        const drawShape = (tile: PIXI.Graphics) => {
+            if (style === 'bars') {
+                const h = 7;
+                // Pasek jest cienki wzdłuż osi grawitacji, gruby w poprzek toru.
+                if (isVertical) tile.rect(-inner / 2, -h / 2, inner, h).fill(0xffffff);
+                else tile.rect(-h / 2, -inner / 2, h, inner).fill(0xffffff);
+            } else {
+                const gap = 3;
+                const dot = Math.min((inner - (n - 1) * gap) / n, inner * 0.5);
+                tile.rect(-dot / 2, -dot / 2, dot, dot).fill(0xffffff);
+            }
+        };
+
+        // Przebudowa puli tylko przy zmianie stylu/liczby/kierunku.
+        const signature = `${style}|${n}|${lanes}|${dir}`;
         if (this.previewBuiltFor !== signature) {
             this.previewContainer.removeChildren();
             this.previewTiles = [];
-            for (let c = 0; c < cols; c++) {
-                const centerX = c * TILE_SIZE + innerW / 2;
+            for (let L = 0; L < lanes; L++) {
                 for (let j = 0; j < n; j++) {
                     const tile = new PIXI.Graphics();
-                    if (style === 'bars') {
-                        // Gruby pasek na szerokość kolumny; j=0 (następny) tuż nad planszą.
-                        const h = 7, gap = 3;
-                        tile.rect(-innerW / 2, -h / 2, innerW, h).fill(0xffffff);
-                        tile.x = centerX;
-                        tile.y = -(j + 1) * (h + gap);
-                    } else {
-                        // Rząd małych kwadratów: LEWY = następny (j=0), w poziomie.
-                        const gap = 3;
-                        const dot = Math.min((innerW - (n - 1) * gap) / n, innerW * 0.5);
-                        const totalW = n * dot + (n - 1) * gap;
-                        tile.roundRect(0, 0, dot, dot, 2).fill(0xffffff);
-                        tile.x = centerX - totalW / 2 + j * (dot + gap);
-                        tile.y = -(dot + 4);
-                    }
+                    drawShape(tile);
+                    place(tile, L, j);
                     this.previewContainer.addChild(tile);
-                    this.previewTiles[c * n + j] = tile;
+                    this.previewTiles[L * n + j] = tile;
                 }
             }
             this.previewBuiltFor = signature;
         }
 
-        for (let c = 0; c < cols; c++) {
-            const preview = this.board.getColumnPreview(c, n);
+        for (let L = 0; L < lanes; L++) {
+            const preview = this.board.getColumnPreview(L, n);
             for (let j = 0; j < n; j++) {
-                const tile = this.previewTiles[c * n + j];
+                const tile = this.previewTiles[L * n + j];
                 const id = preview[j];
                 const def = id !== undefined ? BlockRegistry.getById(id) : undefined;
                 if (def) {
