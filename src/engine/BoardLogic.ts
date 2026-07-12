@@ -111,6 +111,14 @@ export class BoardLogic extends EventEmitter {
         return !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE);
     }
 
+    /** Czy na planszy istnieje jakiekolwiek dopasowanie (używa prawdziwej detekcji silnika). */
+    public hasAnyMatch(): boolean {
+        for (let i = 0; i < this.cells.length; i++) {
+            if (this.cells[i].typeId !== -1 && this.matchEngine.checkMatchAt(i)) return true;
+        }
+        return false;
+    }
+
     /** Zrzut czystego stanu logicznego (bez danych wizualnych). */
     public getState(): BoardState {
         return {

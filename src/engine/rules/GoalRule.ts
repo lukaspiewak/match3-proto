@@ -29,7 +29,7 @@ export class CollectGoal implements GoalRule {
     private current = 0;
     constructor(private readonly targetId: number, private readonly amount: number) {}
 
-    onBlockDestroyed(typeId: number): void {
+    onBlockDestroyed(typeId: number, _score: number): void {
         if (typeId === this.targetId) this.current++;
     }
     isMet(): boolean { return this.current >= this.amount; }

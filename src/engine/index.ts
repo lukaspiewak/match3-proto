@@ -39,3 +39,9 @@ export { type IBlockAction } from './actions/IBlockAction';
 
 // Reguły / cele poziomu (pluginowalne)
 export { type GoalRule, type GoalProgress, CollectGoal, ScoreGoal } from './rules/GoalRule';
+
+// Narzędzia do łamigłówek (walidacja + generator z gwarantowanym rozwiązaniem)
+export {
+    type BoardValidation,
+    validateBoard, ensureHasMove, generateSolvableBoard,
+} from './puzzle/PuzzleTools';
