@@ -12,9 +12,29 @@ import { ActionManager } from './actions/ActionManager';
 import { StatsManager } from './core/StatsManager';
 
 export interface MoveResult {
-    success: boolean;       
-    causedMatch: boolean;   
-    maxGroupSize: number;   
+    success: boolean;
+    causedMatch: boolean;
+    maxGroupSize: number;
+}
+
+/** Logiczny stan pojedynczej komórki — bez danych wizualnych (x/y/velocity). */
+export interface CellSnapshot {
+    typeId: number;
+    hp: number;
+    maxHp: number;
+}
+
+/**
+ * BoardState — czysty, serializowalny stan LOGICZNY planszy.
+ *
+ * Nie zawiera stanu wizualnego/animacji (pozycje, prędkości, timery), który
+ * należy do warstwy renderu. Umożliwia zapis/odczyt pozycji oraz deterministyczną
+ * symulację headless (fundament pod walidację i generowanie łamigłówek).
+ */
+export interface BoardState {
+    cols: number;
+    rows: number;
+    cells: CellSnapshot[];
 }
 
 export class BoardLogic extends EventEmitter {
@@ -82,6 +102,59 @@ export class BoardLogic extends EventEmitter {
             this.matchEngine.scanForMatches();
             this.needsMatchCheck = false;
         }
+    }
+
+    // --- STAN LOGICZNY (serializacja / symulacja headless) ---
+
+    /** Czy plansza jest w stanie spoczynku (nic nie spada, nie wybucha, brak oczekujących dopasowań). */
+    public isSettled(): boolean {
+        return !this.needsMatchCheck && this.cells.every(c => c.state === CellState.IDLE);
+    }
+
+    /** Zrzut czystego stanu logicznego (bez danych wizualnych). */
+    public getState(): BoardState {
+        return {
+            cols: this.cols,
+            rows: this.rows,
+            cells: this.cells.map(c => ({ typeId: c.typeId, hp: c.hp, maxHp: c.maxHp })),
+        };
+    }
+
+    /**
+     * Wczytuje stan logiczny i ustawia warstwę wizualną w pozycjach spoczynkowych
+     * (bez animacji). Wymaga zgodnych wymiarów planszy.
+     */
+    public loadState(state: BoardState): void {
+        if (state.cols !== this.cols || state.rows !== this.rows) {
+            throw new Error(`loadState: niezgodne wymiary (${state.cols}x${state.rows} vs ${this.cols}x${this.rows})`);
+        }
+        this.matchEngine.reset();
+        this.hintSystem.reset();
+        for (let i = 0; i < this.cells.length; i++) {
+            const c = this.cells[i];
+            const s = state.cells[i];
+            c.typeId = s.typeId; c.hp = s.hp; c.maxHp = s.maxHp;
+            c.state = CellState.IDLE;
+            const col = i % this.cols; const row = Math.floor(i / this.cols);
+            c.x = col; c.y = row; c.targetX = col; c.targetY = row;
+            c.velocity = 0; c.timer = 0;
+        }
+    }
+
+    /**
+     * Rozwiązuje planszę do stanu spoczynku BEZ animacji: kaskady dopasowań,
+     * wybuchy, grawitacja i dolosowania wykonują się natychmiast.
+     * Deterministyczne przy ustalonym ziarnie RNG — używane do walidacji łamigłówek.
+     */
+    public resolveInstant(maxIterations: number = 1000): number {
+        const BIG_DELTA = 1000; // wymusza natychmiastowe lądowanie/wygaszenie w jednym kroku
+        this.needsMatchCheck = true;
+        let iterations = 0;
+        while (iterations++ < maxIterations) {
+            this.update(BIG_DELTA);
+            if (this.isSettled()) break;
+        }
+        return iterations;
     }
 
     public initBoard(levelLayout?: number[][], availableBlockIds?: number[]) {

@@ -22,7 +22,7 @@ export {
 } from './Config';
 
 // Rdzeń logiki
-export { BoardLogic, type MoveResult } from './BoardLogic';
+export { BoardLogic, type MoveResult, type BoardState, type CellSnapshot } from './BoardLogic';
 
 // Definicje bloków (rejestr sterowany danymi)
 export { BlockRegistry, BlockDefinition, type SpecialAction, type BlockTriggers } from './BlockDef';

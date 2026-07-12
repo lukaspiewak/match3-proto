@@ -32,19 +32,30 @@ export enum CellState {
     FALLING = 4
 }
 
+/**
+ * Cell — komórka planszy w czasie działania gry.
+ *
+ * Pola dzielą się na dwie grupy:
+ *  • LOGICZNE  (typeId, hp, maxHp, state) — prawda gry, serializowane jako BoardState.
+ *  • WIZUALNE  (x, y, targetX, targetY, velocity, timer) — stan animacji; zapisuje
+ *    je i czyta wyłącznie warstwa fizyki/renderu, ignorowane w symulacji headless.
+ */
 export interface Cell {
     id: number;
+
+    // --- LOGICZNE ---
     typeId: number;
     state: CellState;
+    hp: number;
+    maxHp: number;
+
+    // --- WIZUALNE (animacja) ---
     x: number;
     y: number;
     targetX: number;
     targetY: number;
-    velocity: number; 
+    velocity: number;
     timer: number;
-    // NOWOŚĆ: Wytrzymałość bloku
-    hp: number;
-    maxHp: number;
 }
 
 export const TURN_TIME_LIMIT = 15.0; 
