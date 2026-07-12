@@ -182,7 +182,7 @@ export class BoardRenderer extends PIXI.Container {
                     if (style === 'bars') {
                         // Gruby pasek na szerokość kolumny; j=0 (następny) tuż nad planszą.
                         const h = 7, gap = 3;
-                        tile.roundRect(-innerW / 2, -h / 2, innerW, h, 2).fill(0xffffff);
+                        tile.rect(-innerW / 2, -h / 2, innerW, h).fill(0xffffff);
                         tile.x = centerX;
                         tile.y = -(j + 1) * (h + gap);
                     } else {
