@@ -103,14 +103,11 @@ export class MatchEngine {
      */
     private applyGroupActions(groups: MatchGroup[], finalMatches: Set<number>) {
         for (const group of groups) {
-            const size = group.size;
             const blockDef = BlockRegistry.getById(group.typeId);
             if (!blockDef) continue;
 
-            let action: SpecialAction = 'NONE';
-            if (size >= 5) action = blockDef.triggers.onMatch5;
-            else if (size === 4) action = blockDef.triggers.onMatch4;
-            else if (size === 3) action = blockDef.triggers.onMatch3;
+            // Wybór akcji wg ROZMIARU i KSZTAŁTU (np. L/T → wybuch obszarowy).
+            const action: SpecialAction = blockDef.resolveAction(group.size, group.shape);
 
             if (action !== 'NONE') {
                 if (action.startsWith('CREATE_')) {

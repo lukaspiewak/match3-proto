@@ -1,4 +1,5 @@
 import { Random } from './Random';
+import type { MatchShape } from './match/MatchRule';
 
 export type SpecialAction =
     | 'NONE'
@@ -16,8 +17,15 @@ export type SpecialAction =
 export interface BlockTriggers {
     onMatch3: SpecialAction;
     onMatch4: SpecialAction;
-    onMatch5: SpecialAction;
+    onMatch5: SpecialAction;   // fallback dla dopasowań >=5 (i prostych linii bez onLine5)
     onDropDown: SpecialAction;
+
+    // --- Zależne od KSZTAŁTU (mają pierwszeństwo przed onMatch5) ---
+    // undefined → użyj onMatch5. Aktywne dla grup >=5 (poza onMatchSquare).
+    onMatchL?: SpecialAction;      // zgięcie L  → domyślnie EXPLODE_BIG (wrapped)
+    onMatchT?: SpecialAction;      // zgięcie T/+ → domyślnie EXPLODE_BIG (wrapped)
+    onLine5?: SpecialAction;       // prosta linia >=5 (np. color bomb — wymaga własnej akcji)
+    onMatchSquare?: SpecialAction; // kwadrat 2x2 (wymaga reguły produkującej SQUARE)
 }
 
 export class BlockDefinition {
@@ -44,8 +52,33 @@ export class BlockDefinition {
             onMatch3: customTriggers.onMatch3 || 'NONE',
             onMatch4: customTriggers.onMatch4 || 'EXPLODE_SMALL',
             onMatch5: customTriggers.onMatch5 || 'CREATE_SPECIAL',
-            onDropDown: customTriggers.onDropDown || 'NONE'
+            onDropDown: customTriggers.onDropDown || 'NONE',
+            // Domyślnie zgięcia L/T dają wybuch obszarowy (wrapped). Prostą linię i
+            // kwadrat zostawiamy jako fallback do onMatch5 (undefined), by nie zmieniać
+            // zachowania bez świadomej konfiguracji.
+            onMatchL: customTriggers.onMatchL ?? 'EXPLODE_BIG',
+            onMatchT: customTriggers.onMatchT ?? 'EXPLODE_BIG',
+            onLine5: customTriggers.onLine5,
+            onMatchSquare: customTriggers.onMatchSquare,
         };
+    }
+
+    /**
+     * Wybiera akcję specjalną dla dopasowanej grupy na podstawie ROZMIARU i KSZTAŁTU.
+     * Triggery zależne od kształtu mają pierwszeństwo; brak (undefined) → fallback do
+     * onMatch5 (dla >=5) lub onMatch4/onMatch3.
+     */
+    public resolveAction(size: number, shape: MatchShape): SpecialAction {
+        if (shape === 'SQUARE' && this.triggers.onMatchSquare) return this.triggers.onMatchSquare;
+        if (size >= 5) {
+            if (shape === 'T_SHAPE' && this.triggers.onMatchT) return this.triggers.onMatchT;
+            if (shape === 'L_SHAPE' && this.triggers.onMatchL) return this.triggers.onMatchL;
+            if (shape === 'LINE' && this.triggers.onLine5) return this.triggers.onLine5;
+            return this.triggers.onMatch5;
+        }
+        if (size === 4) return this.triggers.onMatch4;
+        if (size === 3) return this.triggers.onMatch3;
+        return 'NONE';
     }
 }
 
