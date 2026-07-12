@@ -18,6 +18,8 @@ export interface GameConfig {
     limitMode: LimitMode;
     limitValue: number;
     seed: number;
+    /** Ile kolejnych bloków pokazywać w podglądzie nad kolumną (0/brak = wyłączony). */
+    previewCount?: number;
 }
 
 // Rozmiar renderu pojedynczego kafla (piksele) — wspólny dla całego UI.
@@ -95,7 +97,8 @@ export const AppConfig: GameConfig = {
     comboMode: 'TIME',
     seed: 12345,
     blockTypes: 5,
-    gravityDir: 'DOWN'
+    gravityDir: 'DOWN',
+    previewCount: 3
 };
 
 // Domyślne wymiary planszy dla layoutu scen (nie dla logiki silnika).

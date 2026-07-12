@@ -174,8 +174,9 @@ export class BlockRegistry {
         return this.getRandomBlockIdFromList(ids);
     }
 
-    // --- NOWOŚĆ: Losowanie z konkretnej listy ---
-    public static getRandomBlockIdFromList(allowedIds: number[]): number {
+    // Ważone losowanie z listy dozwolonych. `rng` pozwala użyć własnego strumienia
+    // (np. niezależnej kolejki per-kolumna); domyślnie globalny Random.
+    public static getRandomBlockIdFromList(allowedIds: number[], rng: () => number = () => Random.next()): number {
         if (!allowedIds || allowedIds.length === 0) return 0; // Fallback
 
         // Filtrujemy, żeby upewnić się, że bloki istnieją
@@ -184,7 +185,7 @@ export class BlockRegistry {
         if (candidates.length === 0) return allowedIds[0] || 0;
 
         const totalWeight = candidates.reduce((sum, block) => sum + block.weight, 0);
-        let randomValue = Random.next() * totalWeight;
+        let randomValue = rng() * totalWeight;
 
         for (const block of candidates) {
             randomValue -= block.weight;

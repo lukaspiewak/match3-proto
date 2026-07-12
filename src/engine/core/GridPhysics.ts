@@ -1,5 +1,6 @@
 import { CellState, VOID, type Cell, type GravityDir, type GameConfig } from '../Config';
 import { BlockRegistry } from '../BlockDef';
+import { type BlockSource } from '../spawn/BlockSource';
 
 export class GridPhysics {
     private cells: Cell[];
@@ -22,6 +23,17 @@ export class GridPhysics {
 
     public setSpawners(indices: number[]) {
         this.spawners = new Set(indices);
+    }
+
+    // Peekowalne źródło nowych bloków (per-tor). Gdy brak — fallback do globalnego RNG.
+    private source: BlockSource | null = null;
+    public setSource(source: BlockSource | null) {
+        this.source = source;
+    }
+    /** Kolejny blok dla toru `lane` — ze źródła (jeśli jest) lub globalnego RNG. */
+    private nextBlock(lane: number): number {
+        if (this.source) return this.source.next(lane);
+        return BlockRegistry.getRandomBlockIdFromList(this.allowedBlockIds);
     }
 
     public onDropDown: ((id: number) => void) | null = null;
@@ -119,8 +131,8 @@ export class GridPhysics {
                 const idx = finalCol + finalRow * cols;
                 const cell = this.cells[idx];
                 
-                // ZMIANA: Używamy listy dozwolonych bloków
-                const newTypeId = BlockRegistry.getRandomBlockIdFromList(this.allowedBlockIds);
+                // Kolejny blok z peekowalnego źródła danego toru (p) — spójne z podglądem.
+                const newTypeId = this.nextBlock(p);
                 const blockDef = BlockRegistry.getById(newTypeId);
 
                 cell.typeId = newTypeId;

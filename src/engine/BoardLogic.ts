@@ -6,6 +6,7 @@ import {
 } from './Config';
 import { BlockRegistry, BlockDefinition, type SpecialAction } from './BlockDef';
 import { resolveSpecialCombo } from './match/SpecialCombos';
+import { type BlockSource, SeededColumnSource } from './spawn/BlockSource';
 import { GridPhysics } from './core/GridPhysics';
 import { MatchEngine } from './core/MatchEngine';
 import { HintSystem } from './core/HintSystem';
@@ -51,6 +52,15 @@ export class BoardLogic extends EventEmitter {
     public needsMatchCheck: boolean = false;
     public onBadMove: (() => void) | null = null;
     private currentThinkingTime: number = 0;
+    private blockSource: BlockSource | null = null;
+
+    /**
+     * Podgląd n kolejnych bloków, które wpadną w danym torze (kolumnie dla grawitacji
+     * pionowej). peek nie konsumuje — zwrócone bloki faktycznie się pojawią.
+     */
+    public getColumnPreview(lane: number, n: number): number[] {
+        return this.blockSource ? this.blockSource.peek(lane, n) : [];
+    }
 
     // Wymiary planszy pochodzą z konfiguracji instancji, nie z globalnych stałych.
     public get cols(): number { return this.config.cols; }
@@ -187,6 +197,11 @@ export class BoardLogic extends EventEmitter {
             this.physics.allowedBlockIds = [];
             for(let i=0; i<this.config.blockTypes; i++) this.physics.allowedBlockIds.push(i);
         }
+
+        // Peekowalne źródło spawnu (niezależny strumień per-tor) — umożliwia podgląd
+        // kolejnych bloków. Deterministyczne z config.seed.
+        this.blockSource = new SeededColumnSource(this.config.seed, [...this.physics.allowedBlockIds]);
+        this.physics.setSource(this.blockSource);
 
         for (let i = 0; i < cols * rows; i++) {
             const col = i % cols;

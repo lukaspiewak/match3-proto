@@ -20,6 +20,11 @@ export class BoardRenderer extends PIXI.Container {
     private sprites: BlockView[] = [];
     private slotGraphics: PIXI.Graphics[] = [];
     private particles: ParticleSystem;
+
+    // Podgląd kolejnych bloków (nad kolumnami). Budowany leniwie.
+    private previewContainer: PIXI.Container = new PIXI.Container();
+    private previewTiles: PIXI.Graphics[] = [];
+    private previewBuiltFor = -1; // ile kafli/kolumn zbudowano (n*cols), by nie budować co klatkę
     
     // Stan wizualny wstrząsów
     private shakeTimer = 0;
@@ -49,7 +54,10 @@ export class BoardRenderer extends PIXI.Container {
         this.shakeContainer.addChild(this.particles.container);
 
         this.setupBackground();
-        
+
+        // Warstwa podglądu kolejnych bloków (nad planszą, skaluje/trzęsie się z nią).
+        this.shakeContainer.addChild(this.previewContainer);
+
         // 4. Podpięcie zdarzeń (konstruktor wywołuje to raz, ale GameScene może to zresetować)
         this.bindEvents();
     }
@@ -148,6 +156,54 @@ export class BoardRenderer extends PIXI.Container {
         this.updateShake(delta);
         this.updateHints(delta);
         this.renderBlocks(selectedId);
+        this.updatePreview();
+    }
+
+    /** Rysuje podgląd N kolejnych bloków nad każdą kolumną (tylko dla grawitacji DOWN). */
+    private updatePreview() {
+        const n = this.board.config.previewCount ?? 0;
+        const enabled = n > 0 && this.board.config.gravityDir === 'DOWN';
+        if (!enabled) { this.previewContainer.visible = false; return; }
+        this.previewContainer.visible = true;
+
+        const cols = this.board.cols;
+        const size = (TILE_SIZE - GAP) * 0.5;
+        const gap = 4;
+
+        // Budowa puli kafli tylko gdy zmieni się liczba (n*cols).
+        const needed = cols * n;
+        if (this.previewBuiltFor !== needed) {
+            this.previewContainer.removeChildren();
+            this.previewTiles = [];
+            for (let c = 0; c < cols; c++) {
+                for (let j = 0; j < n; j++) {
+                    const tile = new PIXI.Graphics();
+                    tile.roundRect(-size / 2, -size / 2, size, size, 4).fill(0xffffff);
+                    // j=0 (następny) najbliżej planszy; kolejne wyżej.
+                    tile.x = c * TILE_SIZE + (TILE_SIZE - GAP) / 2;
+                    tile.y = -(j + 1) * (size + gap);
+                    this.previewContainer.addChild(tile);
+                    this.previewTiles[c * n + j] = tile;
+                }
+            }
+            this.previewBuiltFor = needed;
+        }
+
+        for (let c = 0; c < cols; c++) {
+            const preview = this.board.getColumnPreview(c, n);
+            for (let j = 0; j < n; j++) {
+                const tile = this.previewTiles[c * n + j];
+                const id = preview[j];
+                const def = id !== undefined ? BlockRegistry.getById(id) : undefined;
+                if (def) {
+                    tile.visible = true;
+                    tile.tint = def.color;
+                    tile.alpha = 0.85 - j * 0.22; // dalsze bledsze
+                } else {
+                    tile.visible = false;
+                }
+            }
+        }
     }
 
     public setHints(indices: number[]) {

@@ -29,7 +29,10 @@ export { BoardLogic, type MoveResult, type BoardState, type CellSnapshot } from 
 export { BlockRegistry, BlockDefinition, DEFAULT_TRIGGERS, type SpecialAction, type BlockTriggers } from './BlockDef';
 
 // Deterministyczny RNG (potrzebny do powtarzalnych plansz / walidacji łamigłówek)
-export { Random } from './Random';
+export { Random, RNG } from './Random';
+
+// Peekowalne źródło spawnu (podgląd kolejnych bloków; wymienne dla łamigłówek)
+export { type BlockSource, SeededColumnSource } from './spawn/BlockSource';
 
 // AI: wyszukiwarka najlepszego ruchu (generyczna, headless)
 export { MoveFinder, type BestMove } from './ai/MoveFinder';
