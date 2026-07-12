@@ -24,7 +24,7 @@ export class BoardRenderer extends PIXI.Container {
     // Podgląd kolejnych bloków (nad kolumnami). Budowany leniwie.
     private previewContainer: PIXI.Container = new PIXI.Container();
     private previewTiles: PIXI.Graphics[] = [];
-    private previewBuiltFor = -1; // ile kafli/kolumn zbudowano (n*cols), by nie budować co klatkę
+    private previewBuiltFor = ''; // sygnatura (styl|n|cols), by nie budować co klatkę
     
     // Stan wizualny wstrząsów
     private shakeTimer = 0;
@@ -159,7 +159,7 @@ export class BoardRenderer extends PIXI.Container {
         this.updatePreview();
     }
 
-    /** Rysuje podgląd N kolejnych bloków nad każdą kolumną (tylko dla grawitacji DOWN). */
+    /** Rysuje minimalistyczny podgląd N kolejnych bloków nad każdą kolumną (grawitacja DOWN). */
     private updatePreview() {
         const n = this.board.config.previewCount ?? 0;
         const enabled = n > 0 && this.board.config.gravityDir === 'DOWN';
@@ -167,26 +167,38 @@ export class BoardRenderer extends PIXI.Container {
         this.previewContainer.visible = true;
 
         const cols = this.board.cols;
-        const size = (TILE_SIZE - GAP) * 0.5;
-        const gap = 4;
+        const style = this.board.config.previewStyle ?? 'bars';
+        const innerW = TILE_SIZE - GAP;
 
-        // Budowa puli kafli tylko gdy zmieni się liczba (n*cols).
-        const needed = cols * n;
-        if (this.previewBuiltFor !== needed) {
+        // Przebudowa puli tylko przy zmianie stylu/liczby (geometria stała między klatkami).
+        const signature = `${style}|${n}|${cols}`;
+        if (this.previewBuiltFor !== signature) {
             this.previewContainer.removeChildren();
             this.previewTiles = [];
             for (let c = 0; c < cols; c++) {
+                const centerX = c * TILE_SIZE + innerW / 2;
                 for (let j = 0; j < n; j++) {
                     const tile = new PIXI.Graphics();
-                    tile.roundRect(-size / 2, -size / 2, size, size, 4).fill(0xffffff);
-                    // j=0 (następny) najbliżej planszy; kolejne wyżej.
-                    tile.x = c * TILE_SIZE + (TILE_SIZE - GAP) / 2;
-                    tile.y = -(j + 1) * (size + gap);
+                    if (style === 'bars') {
+                        // Gruby pasek na szerokość kolumny; j=0 (następny) tuż nad planszą.
+                        const h = 7, gap = 3;
+                        tile.roundRect(-innerW / 2, -h / 2, innerW, h, 2).fill(0xffffff);
+                        tile.x = centerX;
+                        tile.y = -(j + 1) * (h + gap);
+                    } else {
+                        // Rząd małych kwadratów: LEWY = następny (j=0), w poziomie.
+                        const gap = 3;
+                        const dot = Math.min((innerW - (n - 1) * gap) / n, innerW * 0.5);
+                        const totalW = n * dot + (n - 1) * gap;
+                        tile.roundRect(0, 0, dot, dot, 2).fill(0xffffff);
+                        tile.x = centerX - totalW / 2 + j * (dot + gap);
+                        tile.y = -(dot + 4);
+                    }
                     this.previewContainer.addChild(tile);
                     this.previewTiles[c * n + j] = tile;
                 }
             }
-            this.previewBuiltFor = needed;
+            this.previewBuiltFor = signature;
         }
 
         for (let c = 0; c < cols; c++) {
@@ -198,7 +210,7 @@ export class BoardRenderer extends PIXI.Container {
                 if (def) {
                     tile.visible = true;
                     tile.tint = def.color;
-                    tile.alpha = 0.85 - j * 0.22; // dalsze bledsze
+                    tile.alpha = 0.9 - j * 0.2; // dalsze bledsze (następny najbardziej wyrazisty)
                 } else {
                     tile.visible = false;
                 }

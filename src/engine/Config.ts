@@ -20,6 +20,8 @@ export interface GameConfig {
     seed: number;
     /** Ile kolejnych bloków pokazywać w podglądzie nad kolumną (0/brak = wyłączony). */
     previewCount?: number;
+    /** Forma podglądu: 'bars' = grube paski na szerokość kolumny, 'dots' = rząd małych kwadratów. */
+    previewStyle?: 'bars' | 'dots';
 }
 
 // Rozmiar renderu pojedynczego kafla (piksele) — wspólny dla całego UI.
@@ -98,7 +100,8 @@ export const AppConfig: GameConfig = {
     seed: 12345,
     blockTypes: 5,
     gravityDir: 'DOWN',
-    previewCount: 3
+    previewCount: 3,
+    previewStyle: 'bars'
 };
 
 // Domyślne wymiary planszy dla layoutu scen (nie dla logiki silnika).
