@@ -1,4 +1,4 @@
-import { CellState, VOID, VisualConfig, COMBO_BONUS_SECONDS } from '../Config';
+import { CellState, VOID, VisualConfig, COMBO_BONUS_SECONDS, type Cell } from '../Config';
 import { BlockRegistry, type SpecialAction } from '../BlockDef';
 import type { BoardLogic } from '../BoardLogic';
 import { type MatchRule, type MatchGroup } from '../match/MatchRule';
@@ -63,32 +63,10 @@ export class MatchEngine {
             
             finalMatches.forEach(idx => {
                 const cell = cells[idx];
-                
-                if (initialMatches.has(idx)) {
-                    cell.hp = 0; // Instakill dla dopasowanych
-                } else {
-                    cell.hp--;   // Obrażenia obszarowe
-                }
-
-                if (cell.hp <= 0) {
-                    if (cell.state !== CellState.EXPLODING) {
-                        cell.state = CellState.EXPLODING;
-                        cell.timer = VisualConfig.EXPLOSION_DURATION;
-                        
-                        this.board.emit('explode', { 
-                            id: cell.id, 
-                            typeId: cell.typeId, 
-                            x: cell.x, 
-                            y: cell.y 
-                        });
-                    }
-                } else {
-                    this.board.emit('damage', {
-                        id: cell.id,
-                        hp: cell.hp,
-                        maxHp: cell.maxHp
-                    });
-                }
+                // Dopasowane = instakill; dodane przez akcje (obszar) = obrażenia.
+                cell.hp = initialMatches.has(idx) ? 0 : cell.hp - 1;
+                if (cell.hp <= 0) this.explodeCell(cell);
+                else this.damageCell(cell);
             });
 
             // Blokery CC-style: uszkodzenie sąsiadów dopasowania (frosting/skrzynie/kłódki/bomby).
@@ -125,10 +103,8 @@ export class MatchEngine {
         hit.forEach(nIdx => {
             const cell = cells[nIdx];
             cell.hp--;
-            if (cell.hp > 0) {
-                this.board.emit('damage', { id: cell.id, hp: cell.hp, maxHp: cell.maxHp });
-                return;
-            }
+            if (cell.hp > 0) { this.damageCell(cell); return; }
+
             const def = BlockRegistry.getById(cell.typeId);
             if (def && def.revealTypeId !== undefined) {
                 // Kłódka → odsłonięty klocek (może potem spaść/matchować).
@@ -141,9 +117,7 @@ export class MatchEngine {
                 this.board.emit('reveal', { id: cell.id, typeId: cell.typeId });
             } else {
                 // Skrzynia/frosting/rozbrojona bomba → zniszczenie (luka → grawitacja).
-                cell.state = CellState.EXPLODING;
-                cell.timer = VisualConfig.EXPLOSION_DURATION;
-                this.board.emit('explode', { id: cell.id, typeId: cell.typeId, x: cell.x, y: cell.y });
+                this.explodeCell(cell);
             }
         });
 
@@ -152,6 +126,22 @@ export class MatchEngine {
 
     public checkMatchAt(idx: number): boolean {
         return this.matchRule.hasMatchAt(this.board, idx);
+    }
+
+    // --- JEDNOLITY PIPELINE EFEKTÓW (wspólne prymitywy niszczenia/uszkadzania) ---
+
+    /** Komórka zeszła do hp<=0 → stan EXPLODING + timer + zdarzenie 'explode'. */
+    private explodeCell(cell: Cell) {
+        if (cell.state !== CellState.EXPLODING) {
+            cell.state = CellState.EXPLODING;
+            cell.timer = VisualConfig.EXPLOSION_DURATION;
+            this.board.emit('explode', { id: cell.id, typeId: cell.typeId, x: cell.x, y: cell.y });
+        }
+    }
+
+    /** Komórka przeżyła (hp>0) → zdarzenie 'damage'. */
+    private damageCell(cell: Cell) {
+        this.board.emit('damage', { id: cell.id, hp: cell.hp, maxHp: cell.maxHp });
     }
 
     /**
@@ -165,11 +155,7 @@ export class MatchEngine {
             const cell = cells[idx];
             if (cell.typeId === VOID || cell.typeId === -1) return;
             cell.hp = 0;
-            if (cell.state !== CellState.EXPLODING) {
-                cell.state = CellState.EXPLODING;
-                cell.timer = VisualConfig.EXPLOSION_DURATION;
-                this.board.emit('explode', { id: cell.id, typeId: cell.typeId, x: cell.x, y: cell.y });
-            }
+            this.explodeCell(cell);
         });
         if (targetSet.size > 0) this.board.needsMatchCheck = true;
     }
