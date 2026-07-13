@@ -18,6 +18,8 @@ export interface GoalRule {
     readonly kind: string;
     /** Reaguje na zniszczenie bloku danego typu. `score` = bieżący wynik gry. */
     onBlockDestroyed(typeId: number, score: number): void;
+    /** Reaguje na dostarczenie bloku na krawędź (opcjonalne — tylko cele "dostarcz"). */
+    onDelivered?(typeId: number): void;
     isMet(): boolean;
     progress(): GoalProgress;
     reset(): void;
@@ -32,6 +34,21 @@ export class CollectGoal implements GoalRule {
     onBlockDestroyed(typeId: number, _score: number): void {
         if (typeId === this.targetId) this.current++;
     }
+    isMet(): boolean { return this.current >= this.amount; }
+    progress(): GoalProgress {
+        return { kind: this.kind, targetId: this.targetId, current: this.current, target: this.amount, met: this.isMet() };
+    }
+    reset(): void { this.current = 0; }
+}
+
+/** Dostarcz N bloków danego typu na krawędź (np. piłka do bramki). */
+export class DeliverGoal implements GoalRule {
+    readonly kind = 'DELIVER';
+    private current = 0;
+    constructor(private readonly targetId: number, private readonly amount: number) {}
+
+    onBlockDestroyed(): void { /* nie liczy zniszczeń — tylko dostarczenia */ }
+    onDelivered(typeId: number): void { if (typeId === this.targetId) this.current++; }
     isMet(): boolean { return this.current >= this.amount; }
     progress(): GoalProgress {
         return { kind: this.kind, targetId: this.targetId, current: this.current, target: this.amount, met: this.isMet() };

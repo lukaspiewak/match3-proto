@@ -56,7 +56,7 @@ export { CollapseMatchRule } from './match/CollapseMatchRule';
 export { type SpecialComboTable, DEFAULT_COMBOS, resolveSpecialCombo } from './match/SpecialCombos';
 
 // Reguły / cele poziomu (pluginowalne)
-export { type GoalRule, type GoalProgress, CollectGoal, ScoreGoal } from './rules/GoalRule';
+export { type GoalRule, type GoalProgress, CollectGoal, ScoreGoal, DeliverGoal } from './rules/GoalRule';
 
 // Narzędzia do łamigłówek (walidacja + generator z gwarantowanym rozwiązaniem)
 export {

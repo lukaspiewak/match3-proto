@@ -62,6 +62,8 @@ export interface BlockOptions {
     revealTypeId?: number;
     /** Licznik ruchów (bomba). >0 → blok jest bombą; 0 (domyślnie) → zwykły blok. */
     initialCountdown?: number;
+    /** Po dotarciu do krawędzi (zgodnej z grawitacją) blok jest "dostarczony": znika i zgłasza gol. */
+    deliverAtEdge?: boolean;
 }
 
 export class BlockDefinition {
@@ -69,6 +71,7 @@ export class BlockDefinition {
     public readonly damagedByAdjacent: boolean;
     public readonly revealTypeId: number | undefined;
     public readonly initialCountdown: number;
+    public readonly deliverAtEdge: boolean;
 
     constructor(
         public readonly id: number,
@@ -91,6 +94,7 @@ export class BlockDefinition {
         this.damagedByAdjacent = opts.damagedByAdjacent ?? false;
         this.revealTypeId = opts.revealTypeId;
         this.initialCountdown = opts.initialCountdown ?? 0;
+        this.deliverAtEdge = opts.deliverAtEdge ?? false;
         // Per-blok nadpisuje globalną konfigurację DEFAULT_TRIGGERS (układ → efekt).
         this.triggers = {
             onMatch3: customTriggers.onMatch3 ?? DEFAULT_TRIGGERS.onMatch3,
@@ -194,6 +198,13 @@ export class BlockRegistry {
         this.blocks[203] = new BlockDefinition(
             203, "Lock", 0x9AA0A6, 0x5F6368, '🔒', 'block_lock', 0, "Kłódka",
             {}, false, false, false, 1, false, { damagedByAdjacent: true, revealTypeId: 0 }
+        );
+
+        // Payload — blok "do dostarczenia" na krawędź (przykład: piłka do bramki).
+        // Spada z grawitacją, nie matchuje się, niezniszczalny — liczy się TYLKO dotarcie do krawędzi.
+        this.blocks[110] = new BlockDefinition(
+            110, "Payload", 0xF6AD55, 0x9C4221, '💎', 'block_payload', 0, "Dostarcz do krawędzi",
+            {}, true, false, false, 1, true, { deliverAtEdge: true }
         );
 
         // --- BOMBA Z LICZNIKIEM ---

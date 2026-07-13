@@ -10,9 +10,10 @@ export const C_ = 201;   // Crate (skrzynia — 1 sąsiedni match)
 export const F_ = 202;   // Frosting (szron — 2 sąsiednie matche)
 export const K_ = 203;   // Lock (kłódka — odsłania klocek)
 export const B_ = 210;   // Bomb (licznik ruchów)
+export const P_ = 110;   // Payload (dostarcz do krawędzi)
 
 // Typy Celów
-export type GoalType = 'SCORE' | 'COLLECT';
+export type GoalType = 'SCORE' | 'COLLECT' | 'DELIVER';
 
 // Tryb poziomu
 export type LevelMode = 'STANDARD' | 'CONSTRUCTION' | 'GATHERING';
@@ -217,4 +218,29 @@ export const LEVEL_6: LevelConfig = {
     ]
 };
 
-export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6];
+// Demo dostarczania: 2 payloady (P_) trzeba doprowadzić do dolnej krawędzi (grawitacja DOWN).
+// Czyścisz klocki pod nimi → opadają → "dostarczone". Payload jest niezniszczalny i niematchowalny.
+export const LEVEL_7: LevelConfig = {
+    id: "level_7",
+    name: "Level 7: Delivery",
+    mode: 'STANDARD',
+    moveLimit: 30,
+    timeLimit: 0,
+    availableBlockIds: [0, 1, 2, 3],
+    goals: [
+        { type: 'DELIVER', targetId: P_, amount: 2 }
+    ],
+    layout: [
+        [R_, R_, P_, R_, P_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_]
+    ]
+};
+
+export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7];

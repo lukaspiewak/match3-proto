@@ -3,7 +3,7 @@ import { PlayerController } from './PlayerController';
 import {
     TURN_TIME_LIMIT, CellState, AppConfig
 } from './engine/Config';
-import { type GoalRule, CollectGoal, ScoreGoal } from './engine/rules/GoalRule';
+import { type GoalRule, CollectGoal, ScoreGoal, DeliverGoal } from './engine/rules/GoalRule';
 import { type ReplayMove } from './engine/replay/Replay';
 import { type LevelConfig, type LevelGoal } from './LevelDef';
 
@@ -12,11 +12,11 @@ import { type EconomyMode, type Inventory, resolveEconomyMode } from './economy/
 
 /** Buduje pluginowalne cele z deklaratywnej konfiguracji poziomu. */
 function buildGoals(goals: LevelGoal[]): GoalRule[] {
-    return goals.map(g =>
-        g.type === 'COLLECT'
-            ? new CollectGoal(g.targetId ?? -1, g.amount)
-            : new ScoreGoal(g.amount)
-    );
+    return goals.map(g => {
+        if (g.type === 'COLLECT') return new CollectGoal(g.targetId ?? -1, g.amount);
+        if (g.type === 'DELIVER') return new DeliverGoal(g.targetId ?? -1, g.amount);
+        return new ScoreGoal(g.amount);
+    });
 }
 
 export class GameManager {
@@ -90,11 +90,23 @@ export class GameManager {
     public bindEvents() {
         this.logic.off('explode', this.onExplodeHandler);
         this.logic.on('explode', this.onExplodeHandler);
+        this.logic.off('delivered', this.onDeliveredHandler);
+        this.logic.on('delivered', this.onDeliveredHandler);
     }
 
     private onExplodeHandler = (data: { id: number, typeId: number }) => {
         this.onBlockDestroyed(data.typeId);
     };
+
+    private onDeliveredHandler = (data: { id: number, typeId: number }) => {
+        this.onBlockDelivered(data.typeId);
+    };
+
+    private onBlockDelivered(typeId: number) {
+        if (!this.currentLevel || this.isGameOver) return;
+        this.goalRules.forEach(g => g.onDelivered?.(typeId));
+        this.checkWinLossCondition();
+    }
 
     // --- UI Helpers & Getters ---
     public getSessionResourceAmount(typeId: number): number { return this.sessionInventory[typeId] || 0; }

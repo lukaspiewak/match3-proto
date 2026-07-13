@@ -90,14 +90,24 @@ export class BoardLogic extends EventEmitter {
         this.hintSystem = new HintSystem(this, this.matchEngine);
         this.physics.onNeedsMatchCheck = () => { this.needsMatchCheck = true; };
         this.physics.onDropDown = (id) => {
-            // Blok dotarł do krawędzi zgodnej z grawitacją (dowolny z 4 kierunków).
-            // Zdarzenie dla warstwy gry (np. "gol" — piłka w bramce).
-            this.emit('reachEdge', { id, typeId: this.cells[id].typeId });
+            const cell = this.cells[id];
+            const def = BlockRegistry.getById(cell.typeId);
 
-            const def = BlockRegistry.getById(this.cells[id].typeId);
+            // Blok dotarł do krawędzi zgodnej z grawitacją (dowolny z 4 kierunków).
+            this.emit('reachEdge', { id, typeId: cell.typeId });
+
+            // Blok "do dostarczenia" (np. piłka→bramka): znika i zgłasza gol.
+            if (def && def.deliverAtEdge) {
+                this.emit('delivered', { id, typeId: cell.typeId });
+                cell.typeId = -1; cell.state = CellState.IDLE;
+                cell.hp = 0; cell.maxHp = 0; cell.countdown = 0;
+                this.needsMatchCheck = true;
+                return;
+            }
+
             if (def && def.triggers.onDropDown !== 'NONE') {
                 this.runAction(def.triggers.onDropDown, id, new Set([id]));
-                if (this.cells[id].state !== CellState.IDLE) this.needsMatchCheck = false;
+                if (cell.state !== CellState.IDLE) this.needsMatchCheck = false;
             }
         };
         this.initBoard();
