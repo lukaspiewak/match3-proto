@@ -19,7 +19,8 @@ export class GameScene extends PIXI.Container implements Scene {
     private logic: BoardLogic;
     private gameManager: GameManager;
     private soundManager: SoundManager;
-    private renderer: BoardRenderer; 
+    private renderer: BoardRenderer;
+    private humanPlayer: HumanPlayerController | null = null;
     
     private hud: GameHUD;
     
@@ -81,6 +82,7 @@ export class GameScene extends PIXI.Container implements Scene {
 
         const inputContainer = this.renderer.getInputContainer();
         const human = new HumanPlayerController(PLAYER_ID_1, this.gameManager, this.logic, inputContainer, this.soundManager);
+        this.humanPlayer = human;
         this.gameManager.registerPlayer(human);
 
         if (AppConfig.gameMode === 'VS_AI') {
@@ -182,8 +184,7 @@ export class GameScene extends PIXI.Container implements Scene {
         if (this.hud.scoreUI) this.hud.scoreUI.update(delta);
         this.updateBars();
         
-        const human = this.gameManager['players'].find(p => p.id === PLAYER_ID_1) as HumanPlayerController; 
-        const selectedId = human ? human.getSelectedId() : -1;
+        const selectedId = this.humanPlayer ? this.humanPlayer.getSelectedId() : -1;
         this.renderer.update(delta, selectedId);
     }
 
