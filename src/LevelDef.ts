@@ -37,6 +37,8 @@ export interface LevelConfig {
     targetBuildingId?: string;
     // Opcjonalne wloty (indeksy komórek-spawnerów). Puste/brak = cała krawędź generuje bloki.
     spawners?: number[];
+    // Tryb rywalizacji gdy gra jest w VS_AI: 'RACE_SCORE' (domyślnie) lub 'RACE_GOAL'.
+    vsMode?: 'RACE_SCORE' | 'RACE_GOAL';
 }
 
 // --- GENERATOR POZIOMU BUDOWY ---

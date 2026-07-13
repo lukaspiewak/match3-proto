@@ -23,6 +23,7 @@ function buildGoals(goals: LevelGoal[]): GoalRule[] {
  * Publiczne API zachowane 1:1 dla GameScene (delegacja do sesji).
  */
 export class GameManager {
+    private logic: BoardLogic;
     private session: MatchSession;
 
     private currentLevel: LevelConfig | null = null;
@@ -35,6 +36,7 @@ export class GameManager {
     public onReplayFinished: (() => void) | null = null;
 
     constructor(logic: BoardLogic) {
+        this.logic = logic;
         this.session = new MatchSession(logic, {
             onDestroy: (typeId) => this.economyMode.collect(typeId, this.sessionInventory),
             onWin: () => {
@@ -84,11 +86,13 @@ export class GameManager {
         this.sessionInventory = this.economyMode.initInventory();
         this.startInventory = { ...this.sessionInventory };
         console.log(`Loading Level: ${level.id} (${level.mode})`);
+        const vs = this.logic.config.gameMode === 'VS_AI' ? (level.vsMode ?? 'RACE_SCORE') : undefined;
         return {
             moveLimit: level.moveLimit,
             timeLimit: level.timeLimit,
-            goals: buildGoals(level.goals),
+            buildGoals: () => buildGoals(level.goals),
             checksGoals: this.economyMode.checksGoals,
+            vsMode: vs,
             layout: level.layout,
             availableBlockIds: level.availableBlockIds,
             spawners: level.spawners,

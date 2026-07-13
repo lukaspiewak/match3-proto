@@ -25,12 +25,18 @@ export interface SessionHooks {
     onReplayFinished?: () => void;
 }
 
+/** Tryb rywalizacji VS (undefined = pojedynczy gracz / kooperacyjny cel). */
+export type VsMode = 'RACE_SCORE' | 'RACE_GOAL';
+
 /** Parametry startu sesji — prymitywy, bez typu LevelConfig (agnostyczne wobec gry). */
 export interface SessionStart {
     moveLimit: number;
     timeLimit: number;
-    goals: GoalRule[];
+    /** Fabryka celów — wołana raz na gracza (świeże liczniki per-gracz). */
+    buildGoals: () => GoalRule[];
     checksGoals: boolean;
+    /** VS: 'RACE_SCORE' (wyższy wynik na koniec budżetu) lub 'RACE_GOAL' (pierwszy do celu). */
+    vsMode?: VsMode;
     layout?: number[][];
     availableBlockIds?: number[];
     spawners?: number[];
@@ -50,10 +56,12 @@ export class MatchSession {
     private players: SessionPlayer[] = [];
     private currentPlayerIndex = 0;
 
-    private goals: GoalRule[] = [];
+    // Stan per-gracz (indeks = pozycja w players; przy 0 graczy jest 1 slot "gracza 0").
+    private playerGoals: GoalRule[][] = [[]];
+    private playerScores: number[] = [0];
     private checksGoals = true;
     private moveLimit = 0;
-    private currentScore = 0;
+    private vsMode: VsMode | undefined;
     public scorePerBlock = 10;
     private started = false;
 
@@ -79,8 +87,10 @@ export class MatchSession {
     }
 
     // --- Gettery ---
-    public getScore(): number { return this.currentScore; }
-    public getGoalProgress(index: number): number { return this.goals[index] ? this.goals[index].progress().current : 0; }
+    public getScore(): number { return this.playerScores[0] ?? 0; }
+    public getScoreFor(playerIndex: number): number { return this.playerScores[playerIndex] ?? 0; }
+    /** Postęp celu (gracza 0 / człowieka — do HUD/celów w SOLO). */
+    public getGoalProgress(index: number): number { return this.playerGoals[0]?.[index] ? this.playerGoals[0][index].progress().current : 0; }
 
     // --- Gracze ---
     public registerPlayer(player: SessionPlayer) { this.players.push(player); }
@@ -101,14 +111,19 @@ export class MatchSession {
         this.currentPlayerIndex = 0;
         this.isProcessingTurn = false;
         this.isGameOver = false;
-        this.currentScore = 0;
         this.moveLimit = s.moveLimit;
         this.movesLeft = s.moveLimit;
         this.maxMoves = s.moveLimit;
         this.timeLeft = s.timeLimit;
         this.maxTime = s.timeLimit;
-        this.goals = s.goals;
         this.checksGoals = s.checksGoals;
+        this.vsMode = s.vsMode;
+
+        // Świeży zestaw celów i wynik per gracz (min. 1 slot, nawet bez zarejestrowanych graczy).
+        const n = Math.max(1, this.players.length);
+        this.playerGoals = Array.from({ length: n }, () => s.buildGoals());
+        this.playerScores = new Array(n).fill(0);
+
         this.replayMoves = null;
         this.started = true;
         this.logic.initBoard(s.layout, s.availableBlockIds, s.spawners);
@@ -141,7 +156,7 @@ export class MatchSession {
             if (this.timeLeft <= 0) {
                 this.timeLeft = 0;
                 this.checkWinLossCondition();
-                if (!this.isGameOver) this.finish("TIME UP", false);
+                if (!this.isGameOver) this.onBudgetExhausted("TIME UP");
                 return;
             }
         }
@@ -196,30 +211,68 @@ export class MatchSession {
 
     private onBlockDestroyed(typeId: number) {
         if (!this.started || this.isGameOver) return;
-        this.currentScore += this.scorePerBlock;
+        const pi = this.currentPlayerIndex;
+        this.playerScores[pi] += this.scorePerBlock;
 
-        const failReason = this.hooks.onDestroy?.(typeId, this.currentScore);
+        const failReason = this.hooks.onDestroy?.(typeId, this.playerScores[pi]);
         if (failReason) { this.finish(failReason, false); return; }
 
-        this.goals.forEach(g => g.onBlockDestroyed(typeId, this.currentScore));
+        this.playerGoals[pi].forEach(g => g.onBlockDestroyed(typeId, this.playerScores[pi]));
         this.checkWinLossCondition();
     }
 
     private onBlockDelivered(typeId: number) {
         if (!this.started || this.isGameOver) return;
+        const pi = this.currentPlayerIndex;
         this.hooks.onDeliver?.(typeId);
-        this.goals.forEach(g => g.onDelivered?.(typeId));
+        this.playerGoals[pi].forEach(g => g.onDelivered?.(typeId));
         this.checkWinLossCondition();
     }
 
+    /** Ocena wygranej/przegranej — obsługuje SOLO oraz VS (RACE_SCORE / RACE_GOAL). */
     private checkWinLossCondition() {
         if (!this.started || this.isGameOver) return;
-        if (!this.checksGoals) return;
 
-        if (this.goals.every(g => g.isMet())) { this.finish("LEVEL COMPLETE!", true); return; }
-        if (this.moveLimit > 0 && this.movesLeft <= 0 && !this.isProcessingTurn) {
-            this.finish("OUT OF MOVES", false);
+        // 1) Wygrana po celach: SOLO → gracz 0; RACE_GOAL → ktokolwiek pierwszy.
+        //    (RACE_SCORE: cele nie kończą gry — rozstrzyga budżet.)
+        if (this.checksGoals && this.vsMode !== 'RACE_SCORE') {
+            for (let i = 0; i < this.playerGoals.length; i++) {
+                if (this.playerGoals[i].every(g => g.isMet())) {
+                    if (!this.vsMode) { this.finish("LEVEL COMPLETE!", true); return; }
+                    const win = i === 0; // gracz 0 = człowiek
+                    this.finish(win ? "GOAL! YOU WIN" : "BOT REACHED GOAL — YOU LOSE", win);
+                    return;
+                }
+            }
         }
+
+        // 2) Wyczerpany budżet ruchów.
+        if (this.moveLimit > 0 && this.movesLeft <= 0 && !this.isProcessingTurn) {
+            this.onBudgetExhausted('OUT OF MOVES');
+        }
+    }
+
+    /** Koniec budżetu (ruchy/czas): SOLO = przegrana; VS = rozstrzygnięcie rywalizacji. */
+    private onBudgetExhausted(soloReason: string) {
+        if (this.isGameOver) return;
+        if (!this.vsMode) { this.finish(soloReason, false); return; }
+        const o = this.vsOutcome();
+        this.finish(o.reason, o.win);
+    }
+
+    /** Rozstrzyga VS na koniec budżetu (gracz 0 = człowiek vs pozostali). */
+    private vsOutcome(): { win: boolean; reason: string } {
+        const human = this.playerScores[0] ?? 0;
+        const oppScore = Math.max(0, ...this.playerScores.slice(1));
+        if (this.vsMode === 'RACE_GOAL') {
+            const met = this.playerGoals.map(gs => gs.filter(g => g.isMet()).length);
+            const humanMet = met[0] ?? 0;
+            const oppMet = Math.max(0, ...met.slice(1));
+            const win = humanMet > oppMet || (humanMet === oppMet && human > oppScore);
+            return { win, reason: win ? "YOU WIN (na koniec)" : "YOU LOSE (na koniec)" };
+        }
+        const win = human > oppScore;
+        return { win, reason: `${win ? "YOU WIN" : "YOU LOSE"} ${human}:${oppScore}` };
     }
 
     private startTurn() {
