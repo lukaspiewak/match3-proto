@@ -1,6 +1,6 @@
 import { BoardLogic, type BoardState } from '../engine/BoardLogic';
 import { MoveFinder } from '../engine/ai/MoveFinder';
-import { Random } from '../engine/Random';
+import { RNG } from '../engine/Random';
 import { AppConfig, VOID, type GameConfig } from '../engine/Config';
 import { GameManager } from '../GameManager';
 import { PlayerController } from '../PlayerController';
@@ -69,14 +69,14 @@ export function simulateLevel(level: LevelConfig, opts: SimOptions = {}): SimRep
     const ignoreTime = opts.ignoreTime ?? true;
 
     const simLevel: LevelConfig = ignoreTime ? { ...level, timeLimit: 0 } : level;
-    const config: GameConfig = { ...AppConfig, seed };
+    // Instancyjny config (SOLO na potrzeby symulacji) — zero mutacji globali.
+    const config: GameConfig = { ...AppConfig, seed, gameMode: 'SOLO' };
 
-    // GameManager.update czyta globalny AppConfig.gameMode — wymuszamy SOLO na czas symulacji.
-    const prevMode = AppConfig.gameMode;
-    AppConfig.gameMode = 'SOLO';
+    // Lokalny, deterministyczny RNG dla AI — nie dotykamy globalnego Random.
+    const aiRng = new RNG();
+    aiRng.setSeed(seed);
 
-    try {
-        Random.setSeed(seed);
+    {
         const logic = new BoardLogic(config);
         const gm = new GameManager(logic);
 
@@ -109,7 +109,7 @@ export function simulateLevel(level: LevelConfig, opts: SimOptions = {}): SimRep
         checkInvariants();
 
         while (!finished && movesUsed < maxMoves) {
-            const move = MoveFinder.getBestMove(logic);
+            const move = MoveFinder.getBestMove(logic, () => aiRng.next());
             if (!move) { stuck = true; break; }
             gm.requestMove(0, move.idxA, move.dirX, move.dirY);
             movesUsed++;
@@ -135,7 +135,5 @@ export function simulateLevel(level: LevelConfig, opts: SimOptions = {}): SimRep
             issues: [...new Set(issues)],
             finalState: logic.getState(),
         };
-    } finally {
-        AppConfig.gameMode = prevMode;
     }
 }

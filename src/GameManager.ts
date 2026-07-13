@@ -1,7 +1,7 @@
 import { BoardLogic } from './engine/BoardLogic';
 import { PlayerController } from './PlayerController';
 import {
-    TURN_TIME_LIMIT, CellState, AppConfig
+    TURN_TIME_LIMIT, CellState
 } from './engine/Config';
 import { type GoalRule, CollectGoal, ScoreGoal, DeliverGoal } from './engine/rules/GoalRule';
 import { type ReplayMove } from './engine/replay/Replay';
@@ -180,7 +180,7 @@ export class GameManager {
             this.endTurn(); 
         }
 
-        if (AppConfig.gameMode !== 'SOLO' && !this.isProcessingTurn) {
+        if (this.logic.config.gameMode !== 'SOLO' && !this.isProcessingTurn) {
              this.turnTimer -= dt;
              if (this.turnTimer <= 0) this.endTurn();
         }
@@ -193,7 +193,7 @@ export class GameManager {
 
     public isMyTurn(playerId: number): boolean {
         if (this.isGameOver || this.isReplaying) return false;
-        if (AppConfig.gameMode === 'SOLO') {
+        if (this.logic.config.gameMode === 'SOLO') {
              const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
              return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
         }
@@ -283,7 +283,7 @@ export class GameManager {
             return;
         }
 
-        if (AppConfig.gameMode === 'VS_AI') {
+        if (this.logic.config.gameMode === 'VS_AI') {
             this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
         }
         this.startTurn();

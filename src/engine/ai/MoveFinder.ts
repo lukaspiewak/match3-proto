@@ -14,8 +14,10 @@ export class MoveFinder {
     
     /**
      * Główna metoda AI. Skanuje planszę, symuluje ruchy i wybiera najlepszy.
+     * `rng` (0..1) wstrzykiwalny — domyślnie globalny Random; do determinizmu (symulator)
+     * podaj własny strumień, nie mutując globalnego stanu.
      */
-    public static getBestMove(logic: BoardLogic): BestMove | null {
+    public static getBestMove(logic: BoardLogic, rng: () => number = () => Random.next()): BestMove | null {
         if (!logic.cells.every(c => c.state === CellState.IDLE)) return null;
 
         const cols = logic.cols;
@@ -64,8 +66,8 @@ export class MoveFinder {
                     else if (maxSize === 4) score += 50;
                     else if (maxSize >= 5) score += 100;
 
-                    score += row; 
-                    score += Random.next() * 5;
+                    score += row;
+                    score += rng() * 5;
 
                     if (score > bestScore) {
                         bestScore = score;
