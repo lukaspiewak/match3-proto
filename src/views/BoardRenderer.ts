@@ -171,7 +171,7 @@ export class BoardRenderer extends PIXI.Container {
 
         const cols = this.board.cols, rows = this.board.rows;
         const style = this.board.config.previewStyle ?? 'bars';
-        const dir = this.board.config.gravityDir;
+        const dir = this.board.gravityDir; // żywy kierunek (obsługuje zmianę grawitacji w locie)
         const inner = TILE_SIZE - GAP;
         const boardW = cols * TILE_SIZE, boardH = rows * TILE_SIZE;
 

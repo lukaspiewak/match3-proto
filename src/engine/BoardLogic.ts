@@ -90,6 +90,10 @@ export class BoardLogic extends EventEmitter {
         this.hintSystem = new HintSystem(this, this.matchEngine);
         this.physics.onNeedsMatchCheck = () => { this.needsMatchCheck = true; };
         this.physics.onDropDown = (id) => {
+            // Blok dotarł do krawędzi zgodnej z grawitacją (dowolny z 4 kierunków).
+            // Zdarzenie dla warstwy gry (np. "gol" — piłka w bramce).
+            this.emit('reachEdge', { id, typeId: this.cells[id].typeId });
+
             const def = BlockRegistry.getById(this.cells[id].typeId);
             if (def && def.triggers.onDropDown !== 'NONE') {
                 this.runAction(def.triggers.onDropDown, id, new Set([id]));
@@ -109,6 +113,24 @@ export class BoardLogic extends EventEmitter {
     public set statsEnabled(v: boolean) { this.statsManager.enabled = v; }
     public getLastMoveGroupSize() { return this.matchEngine.lastMoveGroupSize; }
     public setGravity(direction: GravityDir) { this.physics.setGravity(direction); }
+    /** Aktualny kierunek grawitacji (źródło prawdy — fizyka, nie config). */
+    public get gravityDir(): GravityDir { return this.physics.gravityDir; }
+
+    /**
+     * Zmienia grawitację w trakcie gry: snapuje komórki do spoczynku (bez artefaktów
+     * ruchu ze starej osi), ustawia nowy kierunek i wymusza przeliczenie (grawitacja + dopasowania).
+     * Najlepiej wołać, gdy plansza jest w spoczynku (isSettled).
+     */
+    public changeGravity(direction: GravityDir) {
+        this.setGravity(direction);
+        const { cols } = this;
+        for (const c of this.cells) {
+            const col = c.id % cols; const row = Math.floor(c.id / cols);
+            c.x = col; c.y = row; c.targetX = col; c.targetY = row; c.velocity = 0;
+            if (c.state === CellState.FALLING || c.state === CellState.SWAPPING) c.state = CellState.IDLE;
+        }
+        this.needsMatchCheck = true;
+    }
     public findHint() { return this.hintSystem.findHint(); }
     public findDeadlockFix() { return this.hintSystem.findDeadlockFix(); }
 

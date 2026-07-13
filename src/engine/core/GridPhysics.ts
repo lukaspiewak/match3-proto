@@ -13,6 +13,7 @@ export class GridPhysics {
 
     public dirX: number = 0;
     public dirY: number = 0;
+    public gravityDir: GravityDir = 'DOWN'; // aktualny kierunek (źródło prawdy dla gry/renderu)
 
     // NOWOŚĆ: Lista dozwolonych bloków do spawnowania
     public allowedBlockIds: number[] = [];
@@ -49,6 +50,7 @@ export class GridPhysics {
     }
 
     public setGravity(direction: GravityDir) {
+        this.gravityDir = direction;
         switch (direction) {
             case 'DOWN': this.dirX = 0; this.dirY = 1; break;
             case 'UP': this.dirX = 0; this.dirY = -1; break;
@@ -163,6 +165,7 @@ export class GridPhysics {
 
     private updateMovement(delta: number) {
         const rows = this.config.rows;
+        const cols = this.config.cols;
         for (const cell of this.cells) {
             if (cell.typeId < 0) continue; // pomija puste (-1) i void (-2)
             
@@ -188,7 +191,13 @@ export class GridPhysics {
                     
                     if (this.onNeedsMatchCheck) this.onNeedsMatchCheck();
 
-                    if (this.onDropDown && cell.y === rows - 1 && this.dirY === 1) {
+                    // Dotarcie do krawędzi zgodnej z kierunkiem grawitacji (dowolny z 4 kierunków).
+                    const atGoalEdge =
+                        (this.dirY === 1 && cell.targetY === rows - 1) ||
+                        (this.dirY === -1 && cell.targetY === 0) ||
+                        (this.dirX === 1 && cell.targetX === cols - 1) ||
+                        (this.dirX === -1 && cell.targetX === 0);
+                    if (this.onDropDown && atGoalEdge) {
                         this.onDropDown(cell.id);
                     }
                 }
