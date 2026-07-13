@@ -133,87 +133,21 @@ export class BlockDefinition {
     }
 }
 
+/**
+ * BlockRegistry — mechanizm rejestru/lookupu definicji bloków.
+ *
+ * Silnik NIE definiuje żadnych bloków — to content gry. Gra ładuje swój zestaw
+ * przez `BlockRegistry.load(defs)` przy starcie (patrz src/content/blocks.ts).
+ */
 export class BlockRegistry {
     private static blocks: BlockDefinition[] = [];
 
-    public static init() {
-        this.blocks = [
-            //basic resources
-            new BlockDefinition(0, "Food", 0x68D391, 0x276749, '🍏', 'block_1'),
-            new BlockDefinition(1, "Wood", 0xd39168, 0x694834, '🪵', 'block_2'),
-            new BlockDefinition(2, "Water", 0x63B3ED, 0x2C5282, '💧', 'block_6'),
-            new BlockDefinition(3, "Stone", 0xc6ccd5, 0x2D3748, '🪨', 'block_4', 20, "Tworzy Rudy", { onMatch5: 'CREATE_ORE' }),
-
-
-            new BlockDefinition(4, "Golden Coin", 0xF6E05E, 0x975A16, '🪙', 'block_3', 1, "Tworzy kamienie", { onMatch5: 'CREATE_WALL' }),
-
-        ];
-        //special blocks
-        const copperOre = new BlockDefinition(30, "Copper Ore", 0x76E4F7, 0x285E61, '🟩', 'block_0', 0);
-        this.blocks[30] = copperOre;
-
-        const ironOre = new BlockDefinition(31, "Iron Ore", 0xFC8181, 0x9B2C2C, '🔶', 'block_0', 0);
-        this.blocks[31] = ironOre;
-
-
-        const specialBlock = new BlockDefinition(
-            100, "TNT", 0xFFFFFF, 0x000000, '🧨', 'block_special', 0, "TNT",
-            { onMatch3: 'EXPLODE_BIG', onMatch4: 'EXPLODE_BIG', onMatch5: 'EXPLODE_BIG', onActivate: 'EXPLODE_BIG' },
-            false, true, true, 1, true
-        );
-        this.blocks[100] = specialBlock;
-
-        // Color Bomb — blok specjalny; aktywacja swapem czyści cały kolor sąsiada.
-        const colorBomb = new BlockDefinition(
-            101, "Color Bomb", 0xFFFFFF, 0x000000, '🌈', 'block_colorbomb', 0, "Color Bomb",
-            { onActivate: 'CLEAR_COLOR' },
-            false, true, false, 1, true
-        );
-        this.blocks[101] = colorBomb;
-
-        const wallBlock = new BlockDefinition(
-            200, "Wall", 0x718096, 0x2D3748, '🧱', 'block_wall', 0, "Przeszkoda",
-            {}, false, false, false, 1, false
-        );
-        this.blocks[200] = wallBlock;
-
-        const iceBlock = new BlockDefinition(
-            300, "Ica", 0xA3BFFA, 0x5A67D8, '🧊', 'block_ice', 5, "Lód",
-            {}, false, true, true, 2, true
-        );
-        this.blocks[300] = iceBlock;
-
-        // --- BLOKERY CC-STYLE (niszczone przez SĄSIEDNI match) ---
-        // Skrzynia: 1 warstwa, nieruchoma, niematchowalna.
-        this.blocks[201] = new BlockDefinition(
-            201, "Crate", 0x8B5A2B, 0x5B3A1B, '📦', 'block_crate', 0, "Skrzynia",
-            {}, false, false, false, 1, false, { damagedByAdjacent: true }
-        );
-        // Frosting: 2 warstwy (2 sąsiednie matche).
-        this.blocks[202] = new BlockDefinition(
-            202, "Frosting", 0xCFE8FF, 0x7FB0E0, '❄️', 'block_frost', 0, "Szron (2 warstwy)",
-            {}, false, false, false, 2, false, { damagedByAdjacent: true }
-        );
-        // Kłódka: po zbiciu odsłania klocek (tu: Food=0), który potem normalnie spada/matchuje.
-        this.blocks[203] = new BlockDefinition(
-            203, "Lock", 0x9AA0A6, 0x5F6368, '🔒', 'block_lock', 0, "Kłódka",
-            {}, false, false, false, 1, false, { damagedByAdjacent: true, revealTypeId: 0 }
-        );
-
-        // Payload — blok "do dostarczenia" na krawędź (przykład: piłka do bramki).
-        // Spada z grawitacją, nie matchuje się, niezniszczalny — liczy się TYLKO dotarcie do krawędzi.
-        this.blocks[110] = new BlockDefinition(
-            110, "Payload", 0xF6AD55, 0x9C4221, '💎', 'block_payload', 0, "Dostarcz do krawędzi",
-            {}, true, false, false, 1, true, { deliverAtEdge: true }
-        );
-
-        // --- BOMBA Z LICZNIKIEM ---
-        // Odlicza ruchy; 0 = przegrana. Rozbrajana przez sąsiedni match (damagedByAdjacent).
-        this.blocks[210] = new BlockDefinition(
-            210, "Bomb", 0x2D3436, 0xE74C3C, '💣', 'block_bomb', 0, "Bomba (licznik ruchów)",
-            {}, false, false, false, 1, false, { damagedByAdjacent: true, initialCountdown: 5 }
-        );
-    }
+    /** Rejestruje pojedynczą definicję (nadpisuje po id). */
+    public static register(def: BlockDefinition): void { this.blocks[def.id] = def; }
+    /** Ładuje zestaw definicji (indeksowany po id). */
+    public static load(defs: BlockDefinition[]): void { for (const d of defs) this.blocks[d.id] = d; }
+    /** Czyści rejestr (np. przed załadowaniem innego zestawu / w testach). */
+    public static clear(): void { this.blocks = []; }
 
     public static getById(id: number): BlockDefinition { return this.blocks[id]; }
     public static getAll(): BlockDefinition[] { return this.blocks.filter(b => b && b.id < 100); }
@@ -246,4 +180,3 @@ export class BlockRegistry {
         return candidates[0].id;
     }
 }
-BlockRegistry.init();

@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import './content/blocks'; // rejestruje definicje bloków gry w silniku (przed użyciem)
 import { SceneManager } from './SceneManager';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
