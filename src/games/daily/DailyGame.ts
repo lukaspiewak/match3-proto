@@ -4,7 +4,7 @@ import { BoardLogic } from '../../engine/BoardLogic';
 import { MatchSession } from '../../engine/session/MatchSession';
 import { BlockRegistry } from '../../engine/BlockDef';
 import { TILE_SIZE, GAP } from '../../engine/Config';
-import { createDailySession, shareString, type DailyDef, type DailyResult } from './DailyChallenge';
+import { createDailySession, shareString, DAILY_PREVIEW_PAD, type DailyDef, type DailyResult } from './DailyChallenge';
 
 /**
  * DAILY GAME — front w modelu HYBRYDOWYM:
@@ -50,7 +50,8 @@ export class DailyGame {
         this.session = session;
 
         const r = new BoardRenderer(this.app, logic);
-        r.x = GAP; r.y = GAP;
+        // Zapas u góry na podgląd kolejnych bloków (paski nad kolumnami).
+        r.x = GAP; r.y = GAP + DAILY_PREVIEW_PAD;
         this.app.stage.addChild(r);
         r.initVisuals();
         this.bindInput(r);

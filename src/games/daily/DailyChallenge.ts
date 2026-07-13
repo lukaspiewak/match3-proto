@@ -40,6 +40,11 @@ export interface DailyResult {
 const DAY_MS = 86_400_000;
 const EPOCH = '2026-01-01';
 
+// Podgląd kolejnych spuszczanych bloków (nad każdą kolumną). 0 = wyłączony.
+export const DAILY_PREVIEW_COUNT = 3;
+// Zapas pikseli nad planszą na paski podglądu (front rezerwuje go w canvasie).
+export const DAILY_PREVIEW_PAD = DAILY_PREVIEW_COUNT > 0 ? 44 : 0;
+
 /** Deterministyczne ziarno z daty (ta sama plansza dla wszystkich). */
 export function seedForDate(date: string): number {
     return Number(date.replaceAll('-', '')); // np. 2026-07-13 -> 20260713
@@ -57,6 +62,7 @@ function buildConfig(def: DailyDef): GameConfig {
         cols: def.cols, rows: def.rows, blockTypes: def.blockTypes,
         gravityDir: 'DOWN', gameMode: 'SOLO', comboMode: 'TIME',
         limitMode: 'MOVES', limitValue: def.moveLimit, seed: def.seed,
+        previewCount: DAILY_PREVIEW_COUNT, previewStyle: 'bars',
     };
 }
 

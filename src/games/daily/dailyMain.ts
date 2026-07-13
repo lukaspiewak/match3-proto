@@ -1,7 +1,7 @@
 import './daily.css';
 import * as PIXI from 'pixi.js';
 import { TILE_SIZE, GAP } from '../../engine/Config';
-import { getDaily } from './DailyChallenge';
+import { getDaily, DAILY_PREVIEW_PAD } from './DailyChallenge';
 import { registerDailyBlocks } from './dailyBlocks';
 import { DailyGame } from './DailyGame';
 
@@ -18,7 +18,8 @@ async function boot() {
     const app = new PIXI.Application();
     await app.init({
         width: boardPx,
-        height: def.rows * TILE_SIZE + GAP * 2,
+        // Dodatkowy zapas u góry na paski podglądu kolejnych bloków (wlot przy grawitacji DOWN).
+        height: def.rows * TILE_SIZE + GAP * 2 + DAILY_PREVIEW_PAD,
         backgroundAlpha: 0,          // przezroczyste — tło daje DOM (Tailwind)
         antialias: true,
         autoDensity: true,
