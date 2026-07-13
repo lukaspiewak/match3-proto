@@ -65,7 +65,11 @@ export class MatchSession {
     public scorePerBlock = 10;
     private started = false;
 
-    public movesLeft = 0;
+    // Pula ruchów PER-GRACZ (każdy ma własny budżet moveLimit). SOLO = 1 slot.
+    private playerMoves: number[] = [0];
+    /** Ruchy pozostałe aktualnemu graczowi (HUD). W SOLO = budżet gracza. */
+    public get movesLeft(): number { return this.playerMoves[this.currentPlayerIndex] ?? 0; }
+    public getMovesFor(playerIndex: number): number { return this.playerMoves[playerIndex] ?? 0; }
     public timeLeft = 0;
     public maxMoves = 0;
     public maxTime = 0;
@@ -112,7 +116,6 @@ export class MatchSession {
         this.isProcessingTurn = false;
         this.isGameOver = false;
         this.moveLimit = s.moveLimit;
-        this.movesLeft = s.moveLimit;
         this.maxMoves = s.moveLimit;
         this.timeLeft = s.timeLimit;
         this.maxTime = s.timeLimit;
@@ -123,6 +126,7 @@ export class MatchSession {
         const n = Math.max(1, this.players.length);
         this.playerGoals = Array.from({ length: n }, () => s.buildGoals());
         this.playerScores = new Array(n).fill(0);
+        this.playerMoves = new Array(n).fill(s.moveLimit); // osobny budżet ruchów per gracz
 
         this.replayMoves = null;
         this.started = true;
@@ -178,16 +182,21 @@ export class MatchSession {
         this.players[this.currentPlayerIndex]?.update(delta);
     }
 
+    /** Czy gracz o tym indeksie ma jeszcze ruchy (nielimitowane gdy moveLimit<=0). */
+    private hasMoves(index: number): boolean { return this.moveLimit <= 0 || this.playerMoves[index] > 0; }
+
     public isMyTurn(playerId: number): boolean {
         if (this.isGameOver || this.isReplaying) return false;
         const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
-        return boardIdle && this.players[this.currentPlayerIndex]?.id === playerId;
+        return boardIdle
+            && this.players[this.currentPlayerIndex]?.id === playerId
+            && this.hasMoves(this.currentPlayerIndex);
     }
 
     public requestMove(playerId: number, idxA: number, dirX: number, dirY: number) {
         if (!this.isMyTurn(playerId)) return;
         const result = this.logic.trySwap(idxA, dirX, dirY);
-        if (result.success && this.moveLimit > 0) this.movesLeft--;
+        if (result.success && this.moveLimit > 0) this.playerMoves[this.currentPlayerIndex]--;
     }
 
     private driveReplay(dt: number) {
@@ -205,7 +214,7 @@ export class MatchSession {
         }
         const m = this.replayMoves[this.replayIndex++];
         const res = this.logic.trySwap(m.idxA, m.dirX, m.dirY);
-        if (res.success && this.moveLimit > 0) this.movesLeft--;
+        if (res.success && this.moveLimit > 0) this.playerMoves[this.currentPlayerIndex]--;
         this.replayTimer = REPLAY_MOVE_DELAY;
     }
 
@@ -246,9 +255,12 @@ export class MatchSession {
             }
         }
 
-        // 2) Wyczerpany budżet ruchów.
-        if (this.moveLimit > 0 && this.movesLeft <= 0 && !this.isProcessingTurn) {
-            this.onBudgetExhausted('OUT OF MOVES');
+        // 2) Wyczerpany budżet ruchów (per-gracz): SOLO → gracz 0; VS → gdy WSZYSCY wyczerpani.
+        if (this.moveLimit > 0 && !this.isProcessingTurn) {
+            const exhausted = this.vsMode
+                ? this.playerMoves.every(m => m <= 0)
+                : (this.playerMoves[0] ?? 0) <= 0;
+            if (exhausted) this.onBudgetExhausted('OUT OF MOVES');
         }
     }
 
@@ -299,8 +311,21 @@ export class MatchSession {
         if (expired.length > 0) { this.finish("BOMB EXPLODED!", false); return; }
 
         if (this.logic.config.gameMode === 'VS_AI') {
-            this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+            // Rotacja do następnego gracza, który MA jeszcze ruchy (pomijamy wyczerpanych).
+            const next = this.nextPlayerWithMoves();
+            if (next === -1) { this.onBudgetExhausted('OUT OF MOVES'); return; }
+            this.currentPlayerIndex = next;
         }
         this.startTurn();
+    }
+
+    /** Następny (po bieżącym) gracz z dostępnymi ruchami, albo -1 gdy wszyscy wyczerpani. */
+    private nextPlayerWithMoves(): number {
+        const n = this.players.length;
+        for (let step = 1; step <= n; step++) {
+            const idx = (this.currentPlayerIndex + step) % n;
+            if (this.hasMoves(idx)) return idx;
+        }
+        return -1;
     }
 }

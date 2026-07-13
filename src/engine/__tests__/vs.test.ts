@@ -54,6 +54,9 @@ describe('Tryb VS (bot) — da się przegrać', () => {
             const r = driveVs('RACE_SCORE', seed, 8, () => []);
             expect(r.ended, `seed ${seed}`).toBe(true);         // gra się kończy (nie "wieczna")
             expect(r.won, `seed ${seed} ${r.sH}:${r.sB}`).toBe(r.sH > r.sB); // wygrana ⟺ wyższy wynik
+            // ROZDZIELNE pule: bot ma własny budżet, więc realnie gra i punktuje
+            // (przy wspólnej puli bywał zagłodzony → 0).
+            expect(r.sB, `bot punktuje, seed ${seed}`).toBeGreaterThan(0);
         }
     });
 
