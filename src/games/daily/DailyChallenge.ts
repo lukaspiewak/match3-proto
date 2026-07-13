@@ -5,6 +5,7 @@ import { type GoalRule, CollectGoal } from '../../engine/rules/GoalRule';
 import { MoveFinder } from '../../engine/ai/MoveFinder';
 import { RNG } from '../../engine/Random';
 import { type ReplayMove } from '../../engine/replay/Replay';
+import { registerDailyBlocks, DAILY_BLOCK_IDS, DAILY_GOAL_TARGET } from './dailyBlocks';
 
 /**
  * DAILY CHALLENGE — inny gatunek na tym samym silniku (dowód reużywalności).
@@ -51,6 +52,7 @@ export function dailyNumber(date: string): number {
 }
 
 function buildConfig(def: DailyDef): GameConfig {
+    registerDailyBlocks(); // własna paleta (bez color bomba) musi być w rejestrze
     return {
         cols: def.cols, rows: def.rows, blockTypes: def.blockTypes,
         gravityDir: 'DOWN', gameMode: 'SOLO', comboMode: 'TIME',
@@ -120,26 +122,28 @@ export function solveDaily(def: DailyDef): DailyResult {
  * Startuje od ziarna daty i, jeśli zachłanny solver nie wygra w limicie, próbuje kolejnych
  * wariantów ziarna (deterministycznie), aż znajdzie planszę do przejścia.
  */
+// Parametry łamigłówki (bez seeda). Cel COLLECT wymaga wielu dopasowań (brak bomb koloru),
+// a moveLimit jest dobrany tak, by zachłanny solver zdążył — ale z zapasem na pomyłki gracza.
+function baseDef(date: string, number: number): Omit<DailyDef, 'seed'> {
+    return {
+        date, number,
+        cols: 7, rows: 7, blockTypes: DAILY_BLOCK_IDS.length,
+        availableBlockIds: DAILY_BLOCK_IDS,
+        moveLimit: 22,
+        goalTargetId: DAILY_GOAL_TARGET,
+        goalAmount: 18,
+    };
+}
+
 export function getDaily(date: string, maxAttempts = 40): DailyDef {
     const base = seedForDate(date);
     const number = dailyNumber(date);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const def: DailyDef = {
-            date, number,
-            seed: base + attempt,
-            cols: 7, rows: 7, blockTypes: 5,
-            availableBlockIds: [0, 1, 2, 3, 4],
-            moveLimit: 18,
-            goalTargetId: 0,
-            goalAmount: 20,
-        };
+        const def: DailyDef = { ...baseDef(date, number), seed: base + attempt };
         if (solveDaily(def).won) return def;
     }
     // Nie powinno się zdarzyć przy tych parametrach; ostatnia próba jako fallback.
-    return {
-        date, number, seed: base + maxAttempts, cols: 7, rows: 7, blockTypes: 5,
-        availableBlockIds: [0, 1, 2, 3, 4], moveLimit: 18, goalTargetId: 0, goalAmount: 20,
-    };
+    return { ...baseDef(date, number), seed: base + maxAttempts };
 }
 
 /**
