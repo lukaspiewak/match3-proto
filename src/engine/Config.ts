@@ -18,6 +18,13 @@ export interface GameConfig {
     limitMode: LimitMode;
     limitValue: number;
     seed: number;
+    /**
+     * Domyślna pula id bloków do losowego wypełniania planszy, gdy `initBoard`
+     * wywołano bez `availableBlockIds` (np. wstępne wypełnienie w konstruktorze).
+     * Brak → fallback do id 0..blockTypes-1. Ustaw, jeśli gra używa innego zakresu id,
+     * inaczej wstępne wypełnienie sięgnie po niezarejestrowane id 0..N-1.
+     */
+    availableBlockIds?: number[];
     /** Ile kolejnych bloków pokazywać w podglądzie nad kolumną (0/brak = wyłączony). */
     previewCount?: number;
     /** Forma podglądu: 'bars' = grube paski na szerokość kolumny, 'dots' = rząd małych kwadratów. */

@@ -256,6 +256,10 @@ export class BoardLogic extends EventEmitter {
         // 1. Konfiguracja fizyki (jakie bloki mają spadać)
         if (availableBlockIds && availableBlockIds.length > 0) {
             this.physics.allowedBlockIds = availableBlockIds;
+        } else if (this.config.availableBlockIds && this.config.availableBlockIds.length > 0) {
+            // Pula z konfiguracji — pozwala grze użyć innego zakresu id niż 0..N-1
+            // (bez tego wstępne wypełnienie sięgnęłoby po niezarejestrowane id).
+            this.physics.allowedBlockIds = [...this.config.availableBlockIds];
         } else {
             // Fallback: wszystkie kolory
             this.physics.allowedBlockIds = [];
@@ -296,9 +300,14 @@ export class BoardLogic extends EventEmitter {
                 if (col >= 2) { if (this.cells[i-1].typeId === this.cells[i-2].typeId) forbiddenH = this.cells[i-1].typeId; }
                 if (row >= 2) { if (this.cells[i-cols].typeId === this.cells[i-(cols*2)].typeId) forbiddenV = this.cells[i-cols].typeId; }
 
-                do {
+                // Losuj unikając początkowej trójki, ale z TWARDYM limitem prób:
+                // gdy pula ma za mało kolorów (albo id nie są zarejestrowane i losowanie
+                // zwraca wciąż to samo), akceptujemy klocek zamiast zapętlić się w nieskończoność.
+                // Ewentualna trójka na starcie i tak rozwiąże się przy pierwszym settle.
+                for (let tries = 0; tries < 20; tries++) {
                     chosenType = BlockRegistry.getRandomBlockIdFromList(this.physics.allowedBlockIds, () => this.fillRng.next());
-                } while (chosenType === forbiddenH || chosenType === forbiddenV);
+                    if (chosenType !== forbiddenH && chosenType !== forbiddenV) break;
+                }
             }
 
             const blockDef = BlockRegistry.getById(chosenType);
