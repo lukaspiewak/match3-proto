@@ -25,6 +25,12 @@ export class BoardRenderer extends PIXI.Container {
     private previewContainer: PIXI.Container = new PIXI.Container();
     private previewTiles: PIXI.Graphics[] = [];
     private previewBuiltFor = ''; // sygnatura (styl|n|cols), by nie budować co klatkę
+    // Stan animacji podglądu (płynne wchodzenie/morfowanie zamiast natychmiastowej podmiany).
+    private previewRestX: number[] = [];
+    private previewRestY: number[] = [];
+    private previewCurColor: number[] = []; // aktualnie wyświetlany kolor (lerp do docelowego)
+    private previewPrevId: number[] = [];   // ostatni id w slocie (detekcja zmiany)
+    private previewSlide: number[] = [];     // 0..1 — świeżo zmieniony slot „wsuwa się" od wlotu
     
     // Stan wizualny wstrząsów
     private shakeTimer = 0;
@@ -156,7 +162,7 @@ export class BoardRenderer extends PIXI.Container {
         this.updateShake(delta);
         this.updateHints(delta);
         this.renderBlocks(selectedId);
-        this.updatePreview();
+        this.updatePreview(delta);
     }
 
     /**
@@ -164,7 +170,7 @@ export class BoardRenderer extends PIXI.Container {
      * (przeciwnej do grawitacji): DOWN→góra, UP→dół, RIGHT→lewa, LEFT→prawa.
      * Tor = kolumna (grawitacja pionowa) lub rząd (pozioma) — spójnie z silnikiem.
      */
-    private updatePreview() {
+    private updatePreview(delta: number = 1) {
         const n = this.board.config.previewCount ?? 0;
         if (n <= 0) { this.previewContainer.visible = false; return; }
         this.previewContainer.visible = true;
@@ -180,6 +186,12 @@ export class BoardRenderer extends PIXI.Container {
         // Baza krawędzi wlotu i znak "na zewnątrz" (poza planszę).
         const sign = (dir === 'DOWN' || dir === 'RIGHT') ? -1 : 1;
         const base = dir === 'UP' ? boardH : dir === 'LEFT' ? boardW : 0;
+
+        // Parametry animacji „juicy" (spójne dla pasków/kropek).
+        const dtSec = delta / 60;
+        const SLIDE_PX = 8;                 // dystans wsuwania świeżego slotu od wlotu
+        const morph = Math.min(1, dtSec * 14); // szybkość morfowania koloru (płynne, nie skokowe)
+        const slideDecay = Math.min(1, dtSec / 0.2);
 
         // Pozycja kafla toru L, slotu j (j=0 = następny, najbliżej planszy).
         const place = (tile: PIXI.Graphics, L: number, j: number) => {
@@ -218,13 +230,21 @@ export class BoardRenderer extends PIXI.Container {
         if (this.previewBuiltFor !== signature) {
             this.previewContainer.removeChildren();
             this.previewTiles = [];
+            this.previewRestX = []; this.previewRestY = [];
+            this.previewCurColor = []; this.previewPrevId = []; this.previewSlide = [];
             for (let L = 0; L < lanes; L++) {
                 for (let j = 0; j < n; j++) {
                     const tile = new PIXI.Graphics();
                     drawShape(tile);
                     place(tile, L, j);
                     this.previewContainer.addChild(tile);
-                    this.previewTiles[L * n + j] = tile;
+                    const slot = L * n + j;
+                    this.previewTiles[slot] = tile;
+                    this.previewRestX[slot] = tile.x;   // pozycja spoczynkowa (animujemy offset względem niej)
+                    this.previewRestY[slot] = tile.y;
+                    this.previewPrevId[slot] = -999;    // wymusza „snap" przy pierwszym pojawieniu
+                    this.previewCurColor[slot] = 0xffffff;
+                    this.previewSlide[slot] = 0;
                 }
             }
             this.previewBuiltFor = signature;
@@ -233,16 +253,36 @@ export class BoardRenderer extends PIXI.Container {
         for (let L = 0; L < lanes; L++) {
             const preview = this.board.getColumnPreview(L, n);
             for (let j = 0; j < n; j++) {
-                const tile = this.previewTiles[L * n + j];
+                const slot = L * n + j;
+                const tile = this.previewTiles[slot];
                 const id = preview[j];
                 const def = id !== undefined ? BlockRegistry.getById(id) : undefined;
-                if (def) {
-                    tile.visible = true;
-                    tile.tint = def.color;
-                    tile.alpha = 0.9 - j * 0.2; // dalsze bledsze (następny najbardziej wyrazisty)
-                } else {
-                    tile.visible = false;
+
+                if (!def) { tile.visible = false; this.previewPrevId[slot] = -999; continue; }
+                tile.visible = true;
+
+                if (this.previewPrevId[slot] !== id) {
+                    const firstAppear = this.previewPrevId[slot] === -999;
+                    this.previewPrevId[slot] = id;
+                    if (firstAppear) {
+                        this.previewCurColor[slot] = def.color; // bez animacji przy pierwszym pojawieniu
+                    } else {
+                        this.previewSlide[slot] = 1; // kolejny blok „dojechał" — wsuń od wlotu i przemorfuj
+                    }
                 }
+
+                // Morfowanie koloru (płynne przejście zamiast natychmiastowej podmiany).
+                this.previewCurColor[slot] = lerpColor(this.previewCurColor[slot], def.color, morph);
+                // Zanik wsunięcia.
+                this.previewSlide[slot] = Math.max(0, this.previewSlide[slot] - slideDecay);
+
+                // Offset „od wlotu" (na zewnątrz planszy) malejący do 0.
+                const off = sign * SLIDE_PX * this.previewSlide[slot];
+                tile.x = this.previewRestX[slot] + (isVertical ? 0 : off);
+                tile.y = this.previewRestY[slot] + (isVertical ? off : 0);
+                tile.tint = this.previewCurColor[slot];
+                // Świeży slot startuje bledszy i „nabiera" wyrazistości; dalsze i tak bledsze.
+                tile.alpha = (0.9 - j * 0.2) * (1 - 0.5 * this.previewSlide[slot]);
             }
         }
     }
@@ -346,6 +386,16 @@ export class BoardRenderer extends PIXI.Container {
     
     // Metoda pomocnicza dla inputu - zwraca kontener interaktywny (tło)
     public getInputContainer(): PIXI.Container {
-        return this.bgContainer; 
+        return this.bgContainer;
     }
+}
+
+/** Płynna interpolacja koloru 0xRRGGBB (kanałowo). t=0→a, t=1→b. */
+function lerpColor(a: number, b: number, t: number): number {
+    const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+    const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+    const r = Math.round(ar + (br - ar) * t);
+    const g = Math.round(ag + (bg - ag) * t);
+    const bl = Math.round(ab + (bb - ab) * t);
+    return (r << 16) | (g << 8) | bl;
 }
