@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
-import { TILE_SIZE, GAP } from '../Config';
-import { BlockRegistry } from '../BlockDef';
+import { TILE_SIZE, GAP } from '../engine/Config';
+import { BlockRegistry } from '../engine/BlockDef';
 
 export class BlockView extends PIXI.Container {
     private bg: PIXI.Graphics;
@@ -9,9 +9,11 @@ export class BlockView extends PIXI.Container {
     
     // Sprite z grafiką pęknięcia
     private damageSprite: PIXI.Sprite;
-    
-    private _typeId: number = -2; 
+    private countdownText: PIXI.Text | null = null;
+
+    private _typeId: number = -2;
     private _lastHp: number = -1;
+    private _lastCountdown: number = -1;
 
     constructor() {
         super();
@@ -46,12 +48,12 @@ export class BlockView extends PIXI.Container {
         this.addChild(this.damageSprite);
     }
 
-    public updateVisuals(typeId: number, hp: number = 1, maxHp: number = 1) {
+    public updateVisuals(typeId: number, hp: number = 1, maxHp: number = 1, countdown: number = 0) {
         // 1. Aktualizacja typu
         if (this._typeId !== typeId) {
             this._typeId = typeId;
             this.visible = (typeId !== -1);
-            
+
             if (typeId !== -1) {
                 const blockDef = BlockRegistry.getById(typeId);
                 if (blockDef) {
@@ -60,7 +62,7 @@ export class BlockView extends PIXI.Container {
                 }
             }
             // Reset stanu HP przy zmianie typu, by wymusić odświeżenie pęknięć
-            this._lastHp = -1; 
+            this._lastHp = -1;
         }
 
         if (typeId === -1) return;
@@ -70,6 +72,29 @@ export class BlockView extends PIXI.Container {
             this._lastHp = hp;
             this.updateDamageEffect(hp, maxHp);
         }
+
+        // 3. Licznik bomby
+        if (this._lastCountdown !== countdown) {
+            this._lastCountdown = countdown;
+            this.updateCountdown(countdown);
+        }
+    }
+
+    private updateCountdown(countdown: number) {
+        if (countdown <= 0) {
+            if (this.countdownText) this.countdownText.visible = false;
+            return;
+        }
+        if (!this.countdownText) {
+            this.countdownText = new PIXI.Text({
+                text: '',
+                style: { fontFamily: 'Arial', fontSize: 24, fontWeight: 'bold', fill: 0xFFFFFF, stroke: { color: 0xE74C3C, width: 4 } }
+            });
+            this.countdownText.anchor.set(0.5);
+            this.addChild(this.countdownText); // na wierzchu
+        }
+        this.countdownText.text = String(countdown);
+        this.countdownText.visible = true;
     }
 
     private updateDamageEffect(hp: number, maxHp: number) {

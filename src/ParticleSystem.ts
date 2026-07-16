@@ -23,7 +23,7 @@ export class ParticleSystem {
     // NOWOŚĆ: Udostępniamy kontener na zewnątrz
     public container: PIXI.Container;
 
-    constructor(app: PIXI.Application) {
+    constructor(_app: PIXI.Application) {
         // Tworzymy kontener, ale NIE dodajemy go do stage (robi to BoardRenderer)
         this.container = new PIXI.Container();
 

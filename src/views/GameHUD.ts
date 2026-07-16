@@ -1,8 +1,8 @@
 import * as PIXI from 'pixi.js';
 import { ScoreUI } from '../ScoreUI';
 import { Button } from '../ui/Button';
-import { CurrentTheme, AppConfig } from '../Config';
-import { BlockRegistry } from '../BlockDef';
+import { AppConfig } from '../engine/Config';
+import { BlockRegistry } from '../engine/BlockDef';
 import { Resources } from '../core/ResourceManager';
 import { Buildings } from '../core/BuildingManager';
 import { type LevelGoal } from '../LevelDef';
@@ -14,9 +14,10 @@ export interface BarMetric {
 
 // NOWOŚĆ: Klasa do wyświetlania pojedynczego celu
 class GoalItem extends PIXI.Container {
-    private label: PIXI.Text;
+    private labelText: PIXI.Text;
     private icon: PIXI.Container;
     private checkmark: PIXI.Text;
+    private bgRef: PIXI.Graphics;
 
     constructor(goal: LevelGoal) {
         super();
@@ -27,7 +28,7 @@ class GoalItem extends PIXI.Container {
         bg.fill({ color: 0x000000, alpha: 0.3 });
         bg.stroke({ width: 1, color: 0xFFFFFF, alpha: 0.2 });
         this.addChild(bg);
-        this['bg'] = bg; // ref for resize
+        this.bgRef = bg; // ref for resize
 
         // 2. Ikona
         this.icon = new PIXI.Container();
@@ -56,12 +57,12 @@ class GoalItem extends PIXI.Container {
         }
 
         // 3. Tekst Postępu
-        this.label = new PIXI.Text({
+        this.labelText = new PIXI.Text({
             text: `0 / ${goal.amount}`,
             style: { fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', fill: 0xFFFFFF }
         });
-        this.label.anchor.set(1, 0.5);
-        this.addChild(this.label);
+        this.labelText.anchor.set(1, 0.5);
+        this.addChild(this.labelText);
         
         // 4. Checkmark (ukryty na start)
         this.checkmark = new PIXI.Text({
@@ -74,23 +75,23 @@ class GoalItem extends PIXI.Container {
     }
 
     public updateProgress(current: number, target: number) {
-        this.label.text = `${current} / ${target}`;
+        this.labelText.text = `${current} / ${target}`;
         
         if (current >= target) {
-            this.label.style.fill = 0x00FF00;
+            this.labelText.style.fill = 0x00FF00;
             this.checkmark.visible = true;
-            this.checkmark.x = this.label.x + 15; // Obok licznika
+            this.checkmark.x = this.labelText.x + 15; // Obok licznika
             this.checkmark.y = 15;
         } else {
-            this.label.style.fill = 0xFFFFFF;
+            this.labelText.style.fill = 0xFFFFFF;
             this.checkmark.visible = false;
         }
     }
 
     public setSize(width: number) {
-        (this['bg'] as PIXI.Graphics).clear().rect(0, 0, width, 30).fill({ color: 0x000000, alpha: 0.3 }).stroke({ width: 1, color: 0xFFFFFF, alpha: 0.2 });
-        this.label.x = width - 10;
-        this.label.y = 15;
+        this.bgRef.clear().rect(0, 0, width, 30).fill({ color: 0x000000, alpha: 0.3 }).stroke({ width: 1, color: 0xFFFFFF, alpha: 0.2 });
+        this.labelText.x = width - 10;
+        this.labelText.y = 15;
     }
 }
 
@@ -305,8 +306,7 @@ export class GameHUD extends PIXI.Container {
 
         if (isPortrait) {
             const panelY = HEADER_HEIGHT;
-            const panelH = reservedPanelHeight;
-            const panelW = (width - 20) / 2; 
+            const panelW = (width - 20) / 2;
 
             this.panelLeft.x = 10;
             this.panelLeft.y = panelY;

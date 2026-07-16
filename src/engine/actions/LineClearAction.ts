@@ -1,30 +1,31 @@
 import { type IBlockAction } from './IBlockAction';
 import type { BoardLogic } from '../BoardLogic';
 import type { ActionManager } from './ActionManager';
-import { COLS, ROWS } from '../Config';
 import { BlockRegistry } from '../BlockDef';
 
 export class LineClearAction implements IBlockAction {
     constructor(private direction: 'HORIZONTAL' | 'VERTICAL') {}
 
     execute(originIdx: number, board: BoardLogic, targetSet: Set<number>, _manager: ActionManager): void {
-        const col = originIdx % COLS;
-        const row = Math.floor(originIdx / COLS);
+        const cols = board.cols;
+        const rows = board.rows;
+        const col = originIdx % cols;
+        const row = Math.floor(originIdx / cols);
 
         if (this.direction === 'HORIZONTAL') {
-            for (let c = 0; c < COLS; c++) {
-                this.tryDestroy(c + row * COLS, board, targetSet);
+            for (let c = 0; c < cols; c++) {
+                this.tryDestroy(c + row * cols, board, targetSet);
             }
         } else {
-            for (let r = 0; r < ROWS; r++) {
-                this.tryDestroy(col + r * COLS, board, targetSet);
+            for (let r = 0; r < rows; r++) {
+                this.tryDestroy(col + r * cols, board, targetSet);
             }
         }
     }
 
     private tryDestroy(idx: number, board: BoardLogic, targetSet: Set<number>) {
         const cell = board.cells[idx];
-        if (cell.typeId !== -1 && !targetSet.has(idx)) {
+        if (cell.typeId >= 0 && !targetSet.has(idx)) { // pomija puste (-1) i void (-2)
             const def = BlockRegistry.getById(cell.typeId);
             if (def && !def.isIndestructible) {
                 targetSet.add(idx);

@@ -7,6 +7,7 @@ import { ExplosionAction } from './ExplosionAction';
 import { LineClearAction } from './LineClearAction';
 import { MagicBonusAction } from './MagicBonusAction';
 import { CreateBlockAction } from './CreateBlockAction'; // NOWOŚĆ
+import { ClearColorAction } from './ClearColorAction';
 
 export class ActionManager {
     private strategies: Map<SpecialAction, IBlockAction> = new Map();
@@ -23,10 +24,12 @@ export class ActionManager {
         this.strategies.set('LINE_CLEAR_V', new LineClearAction('VERTICAL'));
 
         this.strategies.set('MAGIC_BONUS', new MagicBonusAction());
+        this.strategies.set('CLEAR_COLOR', new ClearColorAction());
 
         // --- NOWOŚĆ: Rejestracja akcji tworzenia bloków ---
         // Ujednolicamy CREATE_SPECIAL z innymi
-        this.strategies.set('CREATE_SPECIAL', new CreateBlockAction([100])); // Gwiazda
+        this.strategies.set('CREATE_SPECIAL', new CreateBlockAction([100])); // TNT
+        this.strategies.set('CREATE_COLORBOMB', new CreateBlockAction([101])); // Color Bomb
         this.strategies.set('CREATE_WALL', new CreateBlockAction([200])); // Kamień
         this.strategies.set('CREATE_ORE', new CreateBlockAction([30, 31])); // Ruda
         this.strategies.set('CREATE_ICE', new CreateBlockAction([300])); // Lód

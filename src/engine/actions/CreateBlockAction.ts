@@ -9,7 +9,8 @@ export class CreateBlockAction implements IBlockAction {
 
     execute(originIdx: number, board: BoardLogic, targetSet: Set<number>, _manager: ActionManager): void {
         const cell = board.cells[originIdx];
-        const randomIndex = Math.floor(Math.random() * this.targetBlockId.length);
+        // Deterministyczny strumień planszy (nie Math.random) — wymóg powtarzalności/replaya.
+        const randomIndex = Math.floor(board.nextEffectRandom() * this.targetBlockId.length);
     
         const def = BlockRegistry.getById(this.targetBlockId[randomIndex]);
 

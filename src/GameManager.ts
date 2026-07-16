@@ -1,266 +1,112 @@
-import { BoardLogic } from './BoardLogic';
+import { BoardLogic } from './engine/BoardLogic';
 import { PlayerController } from './PlayerController';
-import { 
-    PLAYER_ID_1, TURN_TIME_LIMIT, CellState, AppConfig 
-} from './Config';
-import { type LevelConfig, type LevelGoal } from './LevelDef'; // Dodano LevelGoal
-import { Resources } from './core/ResourceManager';
-import { Buildings } from './core/BuildingManager';
+import { type GoalRule, CollectGoal, ScoreGoal, DeliverGoal } from './engine/rules/GoalRule';
+import { type ReplayMove } from './engine/replay/Replay';
+import { MatchSession, type SessionStart } from './engine/session/MatchSession';
+import { type LevelConfig, type LevelGoal } from './LevelDef';
+import { type EconomyMode, type Inventory, resolveEconomyMode } from './economy/EconomyMode';
 
+/** Buduje pluginowalne cele z deklaratywnej konfiguracji poziomu. */
+function buildGoals(goals: LevelGoal[]): GoalRule[] {
+    return goals.map(g => {
+        if (g.type === 'COLLECT') return new CollectGoal(g.targetId ?? -1, g.amount);
+        if (g.type === 'DELIVER') return new DeliverGoal(g.targetId ?? -1, g.amount);
+        return new ScoreGoal(g.amount);
+    });
+}
+
+/**
+ * GameManager — adapter gry (city builder) nad generycznym MatchSession.
+ *
+ * MatchSession (silnik) prowadzi rozgrywkę (tury/limity/win-loss/replay/bomby).
+ * Tu dokładamy TYLKO to, co miejskie: ekonomię (EconomyMode), inwentarz i zapis.
+ * Publiczne API zachowane 1:1 dla GameScene (delegacja do sesji).
+ */
 export class GameManager {
     private logic: BoardLogic;
-    private players: PlayerController[] = [];
-    private currentPlayerIndex: number = 0;
+    private session: MatchSession;
 
     private currentLevel: LevelConfig | null = null;
-    private goalProgress: number[] = [];
-    private currentScore: number = 0;
-    
-    private sessionInventory: { [id: number]: number } = {};
-    private startInventory: { [id: number]: number } = {};
-
-    public movesLeft: number = 0;
-    public timeLeft: number = 0;
-    
-    public maxMoves: number = 0;
-    public maxTime: number = 0;
-
-    public turnTimer: number = 0;
-    public get maxTurnTime(): number { return TURN_TIME_LIMIT; }
-
-    private isProcessingTurn: boolean = false; 
-    public isGameOver: boolean = false;
-    public gameStatusText: string = ""; 
+    private economyMode: EconomyMode = resolveEconomyMode('STANDARD');
+    private sessionInventory: Inventory = {};
+    private startInventory: Inventory = {};
 
     public onGameFinished: ((reason: string, win: boolean) => void) | null = null;
     public onDeadlockFixed: ((id: number, type: number) => void) | null = null;
+    public onReplayFinished: (() => void) | null = null;
 
     constructor(logic: BoardLogic) {
         this.logic = logic;
-        this.turnTimer = TURN_TIME_LIMIT;
+        this.session = new MatchSession(logic, {
+            onDestroy: (typeId) => this.economyMode.collect(typeId, this.sessionInventory),
+            onWin: () => {
+                if (this.currentLevel) {
+                    this.economyMode.saveOnWin(this.sessionInventory, this.currentLevel);
+                    console.log("💾 Progress Saved.");
+                }
+            },
+            onFinished: (reason, win) => this.onGameFinished?.(reason, win),
+            onDeadlockFixed: (id, type) => this.onDeadlockFixed?.(id, type),
+            onReplayFinished: () => this.onReplayFinished?.(),
+        });
     }
 
-    public bindEvents() {
-        this.logic.off('explode', this.onExplodeHandler);
-        this.logic.on('explode', this.onExplodeHandler);
-    }
+    // --- Delegacja stanu (czytane przez GameScene/HUD) ---
+    public get movesLeft(): number { return this.session.movesLeft; }
+    public get maxMoves(): number { return this.session.maxMoves; }
+    public get timeLeft(): number { return this.session.timeLeft; }
+    public get maxTime(): number { return this.session.maxTime; }
+    public get turnTimer(): number { return this.session.turnTimer; }
+    public get maxTurnTime(): number { return this.session.maxTurnTime; }
+    public get isGameOver(): boolean { return this.session.isGameOver; }
+    public get gameStatusText(): string { return this.session.gameStatusText; }
+    public get isReplaying(): boolean { return this.session.isReplaying; }
 
-    private onExplodeHandler = (data: { id: number, typeId: number }) => {
-        this.onBlockDestroyed(data.typeId);
-    };
+    // --- Delegacja metod generycznych ---
+    public registerPlayer(player: PlayerController) { this.session.registerPlayer(player); }
+    public clearPlayers() { this.session.clearPlayers(); }
+    public getCurrentPlayerId(): number { return this.session.getCurrentPlayerId(); }
+    public isMyTurn(playerId: number): boolean { return this.session.isMyTurn(playerId); }
+    public requestMove(playerId: number, idxA: number, dirX: number, dirY: number) { this.session.requestMove(playerId, idxA, dirX, dirY); }
+    public update(delta: number) { this.session.update(delta); }
+    public bindEvents() { this.session.bindEvents(); }
+    public getScore(): number { return this.session.getScore(); }
+    public getGoalProgress(index: number): number { return this.session.getGoalProgress(index); }
 
-    // --- UI Helpers & Getters ---
+    // --- Warstwa gry (ekonomia / cele UI) ---
     public getSessionResourceAmount(typeId: number): number { return this.sessionInventory[typeId] || 0; }
     public getStartResourceAmount(typeId: number): number { return this.startInventory[typeId] || 0; }
     public get currentLevelMode() { return this.currentLevel ? this.currentLevel.mode : 'STANDARD'; }
-    
-    // NOWOŚĆ: Gettery dla UI celów
     public getCurrentGoals(): LevelGoal[] { return this.currentLevel ? this.currentLevel.goals : []; }
-    public getGoalProgress(index: number): number { return this.goalProgress[index] || 0; }
 
-    // --- Core Logic ---
-    public registerPlayer(player: PlayerController) { this.players.push(player); }
-    public clearPlayers() { this.players = []; }
-    public getCurrentPlayerId(): number { if (!this.players[this.currentPlayerIndex]) return -1; return this.players[this.currentPlayerIndex].id; }
-
-    public startLevel(level: LevelConfig) {
+    // --- Start / zakończenie ---
+    private prepare(level: LevelConfig): SessionStart {
         this.currentLevel = level;
-        this.currentPlayerIndex = 0;
-        this.isProcessingTurn = false;
-        this.isGameOver = false;
-        this.currentScore = 0;
-
-        this.movesLeft = level.moveLimit;
-        this.maxMoves = level.moveLimit; 
-
-        this.timeLeft = level.timeLimit;
-        this.maxTime = level.timeLimit;
-
-        this.goalProgress = level.goals.map(() => 0);
-        
-        if (level.mode === 'CONSTRUCTION') {
-            this.sessionInventory = Resources.getAll();
-            this.startInventory = { ...this.sessionInventory };
-            console.log("🏗️ Construction Start. Inventory:", this.sessionInventory);
-        } else {
-            this.sessionInventory = {};
-            this.startInventory = {};
-        }
-
+        this.economyMode = resolveEconomyMode(level.mode);
+        this.sessionInventory = this.economyMode.initInventory();
+        this.startInventory = { ...this.sessionInventory };
         console.log(`Loading Level: ${level.id} (${level.mode})`);
-        this.logic.initBoard(level.layout, level.availableBlockIds);
-        this.startTurn();
+        const vs = this.logic.config.gameMode === 'VS_AI' ? (level.vsMode ?? 'RACE_SCORE') : undefined;
+        return {
+            moveLimit: level.moveLimit,
+            timeLimit: level.timeLimit,
+            buildGoals: () => buildGoals(level.goals),
+            checksGoals: this.economyMode.checksGoals,
+            vsMode: vs,
+            layout: level.layout,
+            availableBlockIds: level.availableBlockIds,
+            spawners: level.spawners,
+        };
     }
+
+    public startLevel(level: LevelConfig) { this.session.start(this.prepare(level)); }
+    public startReplay(level: LevelConfig, moves: ReplayMove[]) { this.session.startReplay(this.prepare(level), moves); }
+
+    public resetGame() { this.session.reset(); this.currentLevel = null; }
 
     public finishExpedition() {
         if (!this.currentLevel || this.isGameOver) return;
-        if (this.currentLevel.mode === 'GATHERING') {
-            this.finishGame("EXPEDITION COMPLETE", true);
-        } else {
-            this.finishGame("SURRENDERED", false);
-        }
-    }
-
-    public startGame() { this.logic.initBoard(); this.startTurn(); }
-    public resetGame() { this.isGameOver = true; this.players = []; this.currentLevel = null; }
-    
-    public update(delta: number) {
-        if (this.isGameOver || !this.currentLevel) return;
-        const dt = delta / 60.0;
-
-        if (this.currentLevel.timeLimit > 0) {
-            this.timeLeft -= dt;
-            if (this.timeLeft <= 0) {
-                this.timeLeft = 0;
-                this.checkWinLossCondition();
-                if (!this.isGameOver) this.finishGame("TIME UP", false);
-                return;
-            }
-        }
-
-        if (!this.logic.cells.every(c => c.state === CellState.IDLE)) {
-            this.isProcessingTurn = true;
-        } else if (this.isProcessingTurn) {
-            this.isProcessingTurn = false;
-            this.endTurn(); 
-        }
-
-        if (AppConfig.gameMode !== 'SOLO' && !this.isProcessingTurn) {
-             this.turnTimer -= dt;
-             if (this.turnTimer <= 0) this.endTurn();
-        }
-
-        if (this.players[this.currentPlayerIndex]) this.players[this.currentPlayerIndex].update(delta);
-    }
-
-    public isMyTurn(playerId: number): boolean {
-        if (this.isGameOver) return false;
-        if (AppConfig.gameMode === 'SOLO') {
-             const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
-             return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
-        }
-        const boardIdle = this.logic.cells.every(c => c.state === CellState.IDLE);
-        return boardIdle && this.players[this.currentPlayerIndex].id === playerId;
-    }
-
-    public requestMove(playerId: number, idxA: number, dirX: number, dirY: number) {
-        if (!this.isMyTurn(playerId)) return;
-        const result = this.logic.trySwap(idxA, dirX, dirY);
-        if (result.success) {
-            if (this.currentLevel && this.currentLevel.moveLimit > 0) {
-                this.movesLeft--;
-            }
-        }
-    }
-
-    private onBlockDestroyed(typeId: number) {
-        if (!this.currentLevel || this.isGameOver) return;
-        this.currentScore += 10;
-
-        if (this.currentLevel.mode === 'CONSTRUCTION') {
-            if (this.sessionInventory[typeId] === undefined) this.sessionInventory[typeId] = 0;
-            this.sessionInventory[typeId]--; 
-            
-            if (this.sessionInventory[typeId] < 0) {
-                this.finishGame(`BANKRUPTCY! (Ran out of Block ${typeId})`, false);
-                return;
-            }
-        } 
-        else if (this.currentLevel.mode === 'GATHERING') {
-            const currentGlobal = Resources.getAmount(typeId);
-            const currentSession = this.sessionInventory[typeId] || 0;
-            const maxCapacity = Buildings.getResourceCapacity(typeId);
-
-            if (Resources.hasSpace(typeId, currentSession)) {
-                if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
-                this.sessionInventory[typeId]++;
-            } else {
-                console.log(`Inventory FULL for block ${typeId}`);
-            }
-        }
-        else {
-            if (!this.sessionInventory[typeId]) this.sessionInventory[typeId] = 0;
-            this.sessionInventory[typeId]++;
-        }
-
-        // Update Goals
-        this.currentLevel.goals.forEach((goal, index) => {
-            if (goal.type === 'COLLECT' && goal.targetId === typeId) {
-                this.goalProgress[index]++;
-            } else if (goal.type === 'SCORE') {
-                this.goalProgress[index] = this.currentScore;
-            }
-        });
-
-        this.checkWinLossCondition();
-    }
-
-    private checkWinLossCondition() {
-        if (!this.currentLevel || this.isGameOver) return;
-        if (this.currentLevel.mode === 'GATHERING') return;
-
-        let allGoalsMet = true;
-        this.currentLevel.goals.forEach((goal, index) => {
-            if (this.goalProgress[index] < goal.amount) allGoalsMet = false;
-        });
-
-        if (allGoalsMet) {
-            this.finishGame("LEVEL COMPLETE!", true);
-            return;
-        }
-        if (this.currentLevel.moveLimit > 0 && this.movesLeft <= 0 && !this.isProcessingTurn) {
-            this.finishGame("OUT OF MOVES", false);
-        }
-    }
-
-    private finishGame(reason: string, win: boolean) {
-        this.isGameOver = true;
-        this.gameStatusText = win ? "VICTORY!" : "DEFEAT";
-        
-        if (win && this.currentLevel) {
-            if (this.currentLevel.mode === 'CONSTRUCTION') {
-                Resources.setInventory(this.sessionInventory);
-                // Upgrade po wygranej
-                if (this.currentLevel.targetBuildingId) {
-                    Buildings.upgradeBuilding(this.currentLevel.targetBuildingId);
-                }
-            } else {
-                for (const [id, amount] of Object.entries(this.sessionInventory)) {
-                    Resources.addResource(parseInt(id), amount);
-                }
-            }
-            console.log("💾 Progress Saved.");
-        } else {
-            console.log("❌ No Progress Saved (Defeat/Bankruptcy).");
-        }
-
-        console.log(`🏁 GAME OVER: ${reason}`);
-        if (this.onGameFinished) this.onGameFinished(reason, win);
-    }
-
-    private startTurn() {
-        const currentPlayer = this.players[this.currentPlayerIndex];
-        this.logic.statsEnabled = true;
-        const hint = this.logic.findHint();
-        if (!hint) {
-            const fix = this.logic.findDeadlockFix();
-            if (fix) {
-                this.logic.cells[fix.id].typeId = fix.targetType;
-                if (this.onDeadlockFixed) this.onDeadlockFixed(fix.id, fix.targetType);
-            }
-        }
-        this.turnTimer = TURN_TIME_LIMIT;
-        currentPlayer.onTurnStart();
-    }
-
-    private endTurn() {
-        if (this.isGameOver) return;
-        this.checkWinLossCondition();
-        if (!this.isGameOver) {
-            if (AppConfig.gameMode === 'VS_AI') {
-                this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
-            }
-            this.startTurn();
-        }
+        if (this.currentLevel.mode === 'GATHERING') this.session.finish("EXPEDITION COMPLETE", true);
+        else this.session.finish("SURRENDERED", false);
     }
 }

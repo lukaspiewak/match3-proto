@@ -1,13 +1,19 @@
-import { COLS, ROWS } from './Config';
+import { COLS, ROWS, VOID } from './engine/Config';
 import { type BuildingDefinition } from './BuildingDef';
 import { Buildings } from './core/BuildingManager';
 
-export const R_ = -1;  // Random
-export const S_ = 200; // Stone
-export const I_ = 300; // Ice
+export const R_ = -1;    // Random
+export const S_ = 200;   // Stone
+export const I_ = 300;   // Ice
+export const V_ = VOID;  // Void (trwała dziura / kształt planszy)
+export const C_ = 201;   // Crate (skrzynia — 1 sąsiedni match)
+export const F_ = 202;   // Frosting (szron — 2 sąsiednie matche)
+export const K_ = 203;   // Lock (kłódka — odsłania klocek)
+export const B_ = 210;   // Bomb (licznik ruchów)
+export const P_ = 110;   // Payload (dostarcz do krawędzi)
 
 // Typy Celów
-export type GoalType = 'SCORE' | 'COLLECT';
+export type GoalType = 'SCORE' | 'COLLECT' | 'DELIVER';
 
 // Tryb poziomu
 export type LevelMode = 'STANDARD' | 'CONSTRUCTION' | 'GATHERING';
@@ -29,6 +35,10 @@ export interface LevelConfig {
     availableBlockIds: number[];
     // NOWOŚĆ: ID budynku, który ulepszamy po wygranej (tylko dla CONSTRUCTION)
     targetBuildingId?: string;
+    // Opcjonalne wloty (indeksy komórek-spawnerów). Puste/brak = cała krawędź generuje bloki.
+    spawners?: number[];
+    // Tryb rywalizacji gdy gra jest w VS_AI: 'RACE_SCORE' (domyślnie) lub 'RACE_GOAL'.
+    vsMode?: 'RACE_SCORE' | 'RACE_GOAL';
 }
 
 // --- GENERATOR POZIOMU BUDOWY ---
@@ -55,6 +65,7 @@ export function createConstructionLevel(def: BuildingDefinition): LevelConfig {
         id: `build_${def.id}_lvl${nextLevel}`,
         name: `Build: ${def.name} Lvl ${nextLevel}`,
         mode: 'CONSTRUCTION',
+        layout: layout,
         moveLimit: 30 + (nextLevel * 5), // Stały limit ruchów na budowę (można balansować)
         timeLimit: 0,
         goals: goals,
@@ -73,7 +84,8 @@ export const LEVEL_1: LevelConfig = {
     timeLimit: 0,
     availableBlockIds: [0, 1, 2, 3],
     goals: [
-        { type: 'COLLECT', targetId: 200, amount: 5 }
+        // Kamień (3) jest w puli — zbieramy go matchując. (Wcześniej: mur 200, niewykonalne.)
+        { type: 'COLLECT', targetId: 3, amount: 12 }
     ],
     layout: [
         [R_, R_, R_, R_, R_, R_, R_],
@@ -98,13 +110,14 @@ export const LEVEL_2: LevelConfig = {
     goals: [
         { type: 'SCORE', amount: 3000 }
     ],
+    // Lód rozrzucony (brak linii >=3 na starcie → brak darmowego matcha).
     layout: [
         [R_, R_, R_, R_, R_, R_, S_],
-        [R_, I_, I_, I_, I_, I_, S_],
-        [R_, I_, R_, R_, R_, I_, S_],
-        [R_, I_, R_, R_, R_, I_, S_],
-        [R_, I_, R_, R_, R_, I_, S_],
-        [R_, I_, I_, I_, I_, I_, S_],
+        [R_, I_, R_, R_, I_, R_, S_],
+        [R_, R_, R_, I_, R_, R_, S_],
+        [R_, I_, R_, R_, I_, R_, S_],
+        [R_, R_, R_, I_, R_, R_, S_],
+        [R_, I_, R_, R_, I_, R_, S_],
         [R_, R_, R_, R_, R_, R_, S_],
         [R_, R_, R_, R_, R_, R_, R_],
         [R_, R_, R_, R_, R_, R_, R_]
@@ -156,4 +169,80 @@ export const LEVEL_4: LevelConfig = {
     ]
 };
 
-export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4];
+// Demo topologii: kształt "pucharu" — dziury w dolnych rogach (V_).
+// Górny rząd w pełni grywalny → wszystkie kolumny się dolewają, brak zamkniętych kieszeni.
+export const LEVEL_5: LevelConfig = {
+    id: "level_5",
+    name: "Level 5: Shaped Board",
+    mode: 'STANDARD',
+    moveLimit: 25,
+    timeLimit: 0,
+    availableBlockIds: [0, 1, 2, 3],
+    goals: [
+        { type: 'SCORE', amount: 2000 }
+    ],
+    layout: [
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [V_, R_, R_, R_, R_, R_, V_],
+        [V_, V_, R_, R_, R_, V_, V_]
+    ]
+};
+
+// Demo blokerów CC-style: skrzynie (C_), frosting (F_), kłódka (K_), bomba (B_).
+// Cel: zniszczyć obie skrzynie. Bomba (5 ruchów) dokłada presji — rozbroisz ją
+// sąsiednim matchem albo przegrywasz.
+export const LEVEL_6: LevelConfig = {
+    id: "level_6",
+    name: "Level 6: Blockers",
+    mode: 'STANDARD',
+    moveLimit: 20,
+    timeLimit: 0,
+    availableBlockIds: [0, 1, 2, 3],
+    goals: [
+        { type: 'COLLECT', targetId: C_, amount: 2 }
+    ],
+    layout: [
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, C_, R_, F_, R_, C_, R_],
+        [R_, R_, K_, R_, B_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_]
+    ]
+};
+
+// Demo dostarczania: 2 payloady (P_) trzeba doprowadzić do dolnej krawędzi (grawitacja DOWN).
+// Czyścisz klocki pod nimi → opadają → "dostarczone". Payload jest niezniszczalny i niematchowalny.
+export const LEVEL_7: LevelConfig = {
+    id: "level_7",
+    name: "Level 7: Delivery",
+    mode: 'STANDARD',
+    moveLimit: 30,
+    timeLimit: 0,
+    availableBlockIds: [0, 1, 2, 3],
+    goals: [
+        { type: 'DELIVER', targetId: P_, amount: 2 }
+    ],
+    layout: [
+        [R_, R_, P_, R_, P_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_],
+        [R_, R_, R_, R_, R_, R_, R_]
+    ]
+};
+
+export const LEVELS = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7];

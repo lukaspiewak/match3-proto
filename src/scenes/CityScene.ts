@@ -4,7 +4,7 @@ import { BuildingRegistry, type BuildingDefinition } from '../BuildingDef';
 import { BuildingCard } from '../ui/BuildingCard';
 import { UpgradeWindow } from '../ui/UpgradeWindow';
 import { Button } from '../ui/Button';
-import { CurrentTheme, COLS, TILE_SIZE } from '../Config';
+import { CurrentTheme } from '../engine/Config';
 import { Resources } from '../core/ResourceManager';
 import { createConstructionLevel, type LevelConfig } from '../LevelDef'; // Import generatora
 
@@ -124,7 +124,7 @@ export class CityScene extends PIXI.Container implements Scene {
         this.goldText.text = `Gold: ${gold}`;
     }
 
-    public update(delta: number) {}
+    public update(_delta: number) {}
 
     public resize(width: number, height: number) {
         const contentWidth = this.scrollContainer.width;

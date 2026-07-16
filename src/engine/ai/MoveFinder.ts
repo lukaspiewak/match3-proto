@@ -1,5 +1,5 @@
 import { BoardLogic } from '../BoardLogic';
-import { AppConfig, COLS, ROWS, CellState } from '../Config';
+import { CellState } from '../Config';
 import { Random } from '../Random';
 import { BlockRegistry } from '../BlockDef'; // Dodano import
 
@@ -14,10 +14,14 @@ export class MoveFinder {
     
     /**
      * Główna metoda AI. Skanuje planszę, symuluje ruchy i wybiera najlepszy.
+     * `rng` (0..1) wstrzykiwalny — domyślnie globalny Random; do determinizmu (symulator)
+     * podaj własny strumień, nie mutując globalnego stanu.
      */
-    public static getBestMove(logic: BoardLogic): BestMove | null {
+    public static getBestMove(logic: BoardLogic, rng: () => number = () => Random.next()): BestMove | null {
         if (!logic.cells.every(c => c.state === CellState.IDLE)) return null;
-        
+
+        const cols = logic.cols;
+        const rows = logic.rows;
         let bestMove: BestMove | null = null;
         let bestScore = -Infinity;
 
@@ -29,12 +33,12 @@ export class MoveFinder {
             const defA = BlockRegistry.getById(cell.typeId);
             if (!defA || !defA.isSwappable) continue;
 
-            const col = idx % COLS; 
-            const row = Math.floor(idx / COLS);
+            const col = idx % cols; 
+            const row = Math.floor(idx / cols);
 
             const moves = [];
-            if (col < COLS - 1) moves.push({ target: idx + 1, dirX: 1, dirY: 0 }); 
-            if (row < ROWS - 1) moves.push({ target: idx + COLS, dirX: 0, dirY: 1 }); 
+            if (col < cols - 1) moves.push({ target: idx + 1, dirX: 1, dirY: 0 }); 
+            if (row < rows - 1) moves.push({ target: idx + cols, dirX: 0, dirY: 1 }); 
 
             for (const m of moves) {
                 const otherIdx = m.target;
@@ -62,8 +66,8 @@ export class MoveFinder {
                     else if (maxSize === 4) score += 50;
                     else if (maxSize >= 5) score += 100;
 
-                    score += row; 
-                    score += Random.next() * 5;
+                    score += row;
+                    score += rng() * 5;
 
                     if (score > bestScore) {
                         bestScore = score;
@@ -80,27 +84,29 @@ export class MoveFinder {
     }
 
     private static getMatchSizeAt(logic: BoardLogic, idx: number): number {
-        const cell = logic.cells[idx]; 
-        const type = cell.typeId; 
+        const cols = logic.cols;
+        const rows = logic.rows;
+        const cell = logic.cells[idx];
+        const type = cell.typeId;
         if (type === -1) return 0;
-        
+
         // Tutaj też warto sprawdzić matchowalność (choć AI i tak nie zamieni unswappable)
         const def = BlockRegistry.getById(type);
         if (!def || !def.isMatchable) return 0;
 
-        const col = idx % COLS; 
-        const row = Math.floor(idx / COLS);
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
         
         let countH = 1, i = 1; 
         while (col - i >= 0 && logic.cells[idx - i].typeId === type && logic.cells[idx - i].state === CellState.IDLE) { countH++; i++; }
         i = 1; 
-        while (col + i < COLS && logic.cells[idx + i].typeId === type && logic.cells[idx + i].state === CellState.IDLE) { countH++; i++; }
+        while (col + i < cols && logic.cells[idx + i].typeId === type && logic.cells[idx + i].state === CellState.IDLE) { countH++; i++; }
         
         let countV = 1; 
         i = 1; 
-        while (row - i >= 0 && logic.cells[idx - i * COLS].typeId === type && logic.cells[idx - i * COLS].state === CellState.IDLE) { countV++; i++; }
+        while (row - i >= 0 && logic.cells[idx - i * cols].typeId === type && logic.cells[idx - i * cols].state === CellState.IDLE) { countV++; i++; }
         i = 1; 
-        while (row + i < ROWS && logic.cells[idx + i * COLS].typeId === type && logic.cells[idx + i * COLS].state === CellState.IDLE) { countV++; i++; }
+        while (row + i < rows && logic.cells[idx + i * cols].typeId === type && logic.cells[idx + i * cols].state === CellState.IDLE) { countV++; i++; }
 
         return Math.max(countH, countV);
     }

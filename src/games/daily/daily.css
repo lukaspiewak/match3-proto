@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* Ciemny motyw domyślnie (klasa `dark` na <html>). */
+html { color-scheme: dark; }
+
+/* Canvas planszy skaluje się responsywnie; szerokość ograniczona do widoku. */
+#board-mount canvas {
+    width: min(92vw, 58vh);
+    height: auto;
+    display: block;
+    touch-action: none; /* input Pixi (swipe) bez scrolla strony */
+}

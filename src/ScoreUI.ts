@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import { BlockRegistry } from './BlockDef';
+import { BlockRegistry } from './engine/BlockDef';
 
 // Klasa pomocnicza: Pojedynczy slot surowca
 class ResourceSlot extends PIXI.Container {
@@ -8,7 +8,7 @@ class ResourceSlot extends PIXI.Container {
     private flash: PIXI.Graphics;
     
     private iconSprite: PIXI.Sprite | PIXI.Text;
-    private label: PIXI.Text;
+    private labelText: PIXI.Text;
     
     private lastAmount: number = -1;
     
@@ -55,18 +55,18 @@ class ResourceSlot extends PIXI.Container {
         this.addChild(this.iconSprite);
 
         // 5. Licznik
-        this.label = new PIXI.Text({
+        this.labelText = new PIXI.Text({
             text: '0',
-            style: { 
-                fontFamily: 'Arial', 
-                fontSize: 12, 
-                fontWeight: 'bold', 
-                fill: 0xFFFFFF, 
-                stroke: { color: 0x000000, width: 2 } 
+            style: {
+                fontFamily: 'Arial',
+                fontSize: 12,
+                fontWeight: 'bold',
+                fill: 0xFFFFFF,
+                stroke: { color: 0x000000, width: 2 }
             }
         });
-        this.label.anchor.set(1, 0.5);
-        this.addChild(this.label);
+        this.labelText.anchor.set(1, 0.5);
+        this.addChild(this.labelText);
 
         this.redraw(this.currentWidth, 0, color);
     }
@@ -77,10 +77,10 @@ class ResourceSlot extends PIXI.Container {
         }
         this.lastAmount = amount;
 
-        this.label.text = amount.toString();
+        this.labelText.text = amount.toString();
         
-        if (amount <= 0) this.label.style.fill = 0xAAAAAA;
-        else this.label.style.fill = 0xFFFFFF;
+        if (amount <= 0) this.labelText.style.fill = 0xAAAAAA;
+        else this.labelText.style.fill = 0xFFFFFF;
     }
 
     public updateProgress(ratio: number, color: number) {
@@ -126,8 +126,8 @@ class ResourceSlot extends PIXI.Container {
             this.iconSprite.y = this.HEIGHT / 2;
         }
         if (this.label) {
-            this.label.x = width - 8; 
-            this.label.y = this.HEIGHT / 2;
+            this.labelText.x = width - 8; 
+            this.labelText.y = this.HEIGHT / 2;
         }
         
         this.bg.clear();

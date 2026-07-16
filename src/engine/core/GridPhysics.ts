@@ -1,9 +1,11 @@
-import { COLS, ROWS, CellState, type Cell, type GravityDir, AppConfig } from '../Config';
+import { CellState, VOID, type Cell, type GravityDir, type GameConfig } from '../Config';
 import { BlockRegistry } from '../BlockDef';
+import { type BlockSource } from '../spawn/BlockSource';
 
 export class GridPhysics {
     private cells: Cell[];
-    
+    private config: GameConfig;
+
     // Parametry fizyki
     private readonly SWAP_SPEED = 0.20;
     private readonly GRAVITY_ACCEL = 0.008;
@@ -11,22 +13,44 @@ export class GridPhysics {
 
     public dirX: number = 0;
     public dirY: number = 0;
-    
+    public gravityDir: GravityDir = 'DOWN'; // aktualny kierunek (źródło prawdy dla gry/renderu)
+
     // NOWOŚĆ: Lista dozwolonych bloków do spawnowania
     public allowedBlockIds: number[] = [];
+
+    // Indeksy komórek-wlotów (spawnerów). Pusty zbiór = domyślnie wlot na każdej
+    // krawędzi (klasyczne zachowanie: cała górna krawędź generuje bloki).
+    private spawners: Set<number> = new Set();
+
+    public setSpawners(indices: number[]) {
+        this.spawners = new Set(indices);
+    }
+
+    // Peekowalne źródło nowych bloków (per-tor). Gdy brak — fallback do globalnego RNG.
+    private source: BlockSource | null = null;
+    public setSource(source: BlockSource | null) {
+        this.source = source;
+    }
+    /** Kolejny blok dla toru `lane` — ze źródła (jeśli jest) lub globalnego RNG. */
+    private nextBlock(lane: number): number {
+        if (this.source) return this.source.next(lane);
+        return BlockRegistry.getRandomBlockIdFromList(this.allowedBlockIds);
+    }
 
     public onDropDown: ((id: number) => void) | null = null;
     public onNeedsMatchCheck: (() => void) | null = null;
 
-    constructor(cells: Cell[]) {
+    constructor(cells: Cell[], config: GameConfig) {
         this.cells = cells;
-        this.setGravity(AppConfig.gravityDir);
-        
+        this.config = config;
+        this.setGravity(config.gravityDir);
+
         // Domyślna lista (jeśli nikt nie ustawi innej)
-        for(let i=0; i<AppConfig.blockTypes; i++) this.allowedBlockIds.push(i);
+        for(let i=0; i<config.blockTypes; i++) this.allowedBlockIds.push(i);
     }
 
     public setGravity(direction: GravityDir) {
+        this.gravityDir = direction;
         switch (direction) {
             case 'DOWN': this.dirX = 0; this.dirY = 1; break;
             case 'UP': this.dirX = 0; this.dirY = -1; break;
@@ -40,11 +64,13 @@ export class GridPhysics {
         this.updateMovement(delta);
     }
 
-    private updateGravityLogic() { 
+    private updateGravityLogic() {
+        const cols = this.config.cols;
+        const rows = this.config.rows;
         const isVertical = (this.dirY !== 0);
-        const primarySize = isVertical ? COLS : ROWS;
-        const secondarySize = isVertical ? ROWS : COLS;
-        
+        const primarySize = isVertical ? cols : rows;
+        const secondarySize = isVertical ? rows : cols;
+
         for (let p = 0; p < primarySize; p++) {
             let emptySlots = 0;
             let start = (this.dirX > 0 || this.dirY > 0) ? secondarySize - 1 : 0;
@@ -55,21 +81,24 @@ export class GridPhysics {
             for (let s = start; s !== end; s += step) {
                 const col = isVertical ? p : s;
                 const row = isVertical ? s : p;
-                const idx = col + row * COLS;
+                const idx = col + row * cols;
                 const cell = this.cells[idx];
-                
+
+                // Void = trwała przeszkoda: bloki na niej stają, nie przechodzą przez nią.
+                if (cell.typeId === VOID) { emptySlots = 0; continue; }
+
                 const def = (cell.typeId !== -1) ? BlockRegistry.getById(cell.typeId) : null;
 
-                if (cell.typeId === -1) { 
-                    emptySlots++; 
-                } 
+                if (cell.typeId === -1) {
+                    emptySlots++;
+                }
                 else if (def && !def.hasGravity) {
                     emptySlots = 0;
                 }
                 else if (emptySlots > 0) {
                     const targetCol = col + (this.dirX * emptySlots);
                     const targetRow = row + (this.dirY * emptySlots);
-                    const targetIdx = targetCol + targetRow * COLS;
+                    const targetIdx = targetCol + targetRow * cols;
                     const targetCell = this.cells[targetIdx];
                     
                     targetCell.typeId = cell.typeId; 
@@ -81,25 +110,33 @@ export class GridPhysics {
                     targetCell.targetY = targetRow;
                     targetCell.hp = cell.hp;
                     targetCell.maxHp = cell.maxHp;
-                    
-                    cell.typeId = -1; 
+                    targetCell.countdown = cell.countdown;
+
+                    cell.typeId = -1;
                     cell.state = CellState.IDLE;
+                    cell.countdown = 0;
                 }
             }
             
             // 2. Generowanie nowych bloków ("Spawn Train")
-            for (let i = 0; i < emptySlots; i++) {
+            // Wlot dla tej linii to komórka na krawędzi po stronie przeciwnej do grawitacji.
+            const entryCol = isVertical ? p : (this.dirX > 0 ? 0 : cols - 1);
+            const entryRow = isVertical ? (this.dirY > 0 ? 0 : rows - 1) : p;
+            const entryIdx = entryCol + entryRow * cols;
+            const canSpawn = this.spawners.size === 0 || this.spawners.has(entryIdx);
+
+            for (let i = 0; canSpawn && i < emptySlots; i++) {
                 let logicalS;
                 if (this.dirX > 0 || this.dirY > 0) { logicalS = emptySlots - 1 - i; } 
                 else { logicalS = (secondarySize - emptySlots) + i; }
                 
                 const finalCol = isVertical ? p : logicalS;
                 const finalRow = isVertical ? logicalS : p;
-                const idx = finalCol + finalRow * COLS;
+                const idx = finalCol + finalRow * cols;
                 const cell = this.cells[idx];
                 
-                // ZMIANA: Używamy listy dozwolonych bloków
-                const newTypeId = BlockRegistry.getRandomBlockIdFromList(this.allowedBlockIds);
+                // Kolejny blok z peekowalnego źródła danego toru (p) — spójne z podglądem.
+                const newTypeId = this.nextBlock(p);
                 const blockDef = BlockRegistry.getById(newTypeId);
 
                 cell.typeId = newTypeId;
@@ -110,14 +147,15 @@ export class GridPhysics {
                 
                 cell.hp = blockDef.initialHp;
                 cell.maxHp = blockDef.initialHp;
+                cell.countdown = blockDef.initialCountdown;
 
                 let spawnX = finalCol;
                 let spawnY = finalRow;
 
                 if (this.dirY === 1) spawnY = -(i + 1);
-                else if (this.dirY === -1) spawnY = ROWS + (emptySlots - i);
+                else if (this.dirY === -1) spawnY = rows + (emptySlots - i);
                 else if (this.dirX === 1) spawnX = -(i + 1);
-                else if (this.dirX === -1) spawnX = COLS + (emptySlots - i);
+                else if (this.dirX === -1) spawnX = cols + (emptySlots - i);
 
                 cell.x = spawnX;
                 cell.y = spawnY;
@@ -126,9 +164,10 @@ export class GridPhysics {
     }
 
     private updateMovement(delta: number) {
-        // ... (bez zmian) ...
+        const rows = this.config.rows;
+        const cols = this.config.cols;
         for (const cell of this.cells) {
-            if (cell.typeId === -1) continue;
+            if (cell.typeId < 0) continue; // pomija puste (-1) i void (-2)
             
             if (cell.state === CellState.FALLING) {
                 cell.velocity += this.GRAVITY_ACCEL * delta;
@@ -152,7 +191,13 @@ export class GridPhysics {
                     
                     if (this.onNeedsMatchCheck) this.onNeedsMatchCheck();
 
-                    if (this.onDropDown && cell.y === ROWS - 1 && this.dirY === 1) {
+                    // Dotarcie do krawędzi zgodnej z kierunkiem grawitacji (dowolny z 4 kierunków).
+                    const atGoalEdge =
+                        (this.dirY === 1 && cell.targetY === rows - 1) ||
+                        (this.dirY === -1 && cell.targetY === 0) ||
+                        (this.dirX === 1 && cell.targetX === cols - 1) ||
+                        (this.dirX === -1 && cell.targetX === 0);
+                    if (this.onDropDown && atGoalEdge) {
                         this.onDropDown(cell.id);
                     }
                 }

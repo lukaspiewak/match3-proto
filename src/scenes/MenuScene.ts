@@ -1,10 +1,10 @@
 import * as PIXI from 'pixi.js';
 import { Button } from '../ui/Button'; 
-import { AppConfig, type GravityDir, CurrentTheme } from '../Config';
+import { AppConfig, type GravityDir, CurrentTheme } from '../engine/Config';
 import { type Scene } from '../SceneManager';
 import { LEVELS, type LevelConfig } from '../LevelDef';
 import { Resources } from '../core/ResourceManager'; 
-import { BlockRegistry } from '../BlockDef'; 
+import { BlockRegistry } from '../engine/BlockDef'; 
 
 export class MenuScene extends PIXI.Container implements Scene {
     private mainContainer: PIXI.Container;
@@ -14,11 +14,11 @@ export class MenuScene extends PIXI.Container implements Scene {
     // NOWOŚĆ: Kontener na inwentarz
     private resourcesText: PIXI.Text;
 
-    private btnOptLimit: Button;
-    private btnOptVal: Button;
-    private btnOptColors: Button;
-    private btnOptGravity: Button;
-    private btnOptSeed: Button;
+    private btnOptLimit!: Button;
+    private btnOptVal!: Button;
+    private btnOptColors!: Button;
+    private btnOptGravity!: Button;
+    private btnOptSeed!: Button;
 
     private startGameCallback: (level: LevelConfig) => void;
 
@@ -140,7 +140,7 @@ export class MenuScene extends PIXI.Container implements Scene {
 
         let y = 120;
         
-        LEVELS.forEach((level, index) => {
+        LEVELS.forEach((level) => {
             // Oznaczamy tryb w nazwie
             const modeSuffix = level.mode === 'CONSTRUCTION' ? ' [BUILD]' : (level.mode === 'GATHERING' ? ' [FREE]' : '');
             
@@ -227,9 +227,9 @@ export class MenuScene extends PIXI.Container implements Scene {
         this.btnOptSeed.setText(`SEED: ${AppConfig.seed}`);
     }
 
-    public update(delta: number) {}
+    public update(_delta: number) {}
 
-    public resize(width: number, height: number) {
+    public resize(width: number, _height: number) {
         this.x = width / 2;
         this.y = 0; 
         
